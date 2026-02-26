@@ -936,10 +936,10 @@ G.inventory[0]={id:'supershotgun',count:1};
 //  DEMON DEFINITIONS
 // ─────────────────────────────────────────────────────────────────
 const DEMON_DEFS={
-  imp:       {name:'Imp',         bodyColor:0x8b3010,headColor:0xaa5030,eyeColor:0xff2200,hp:3, speed:1.6,damage:10,scale:1.0,attackRange:2.0,attackCd:1.6},
-  pinky:     {name:'Pinky',       bodyColor:0xcc3020,headColor:0xff5040,eyeColor:0xff0000,hp:7, speed:1.0,damage:20,scale:1.4,attackRange:2.5,attackCd:1.4},
-  cacodemon: {name:'Cacodemon',   bodyColor:0x8800cc,headColor:0xaa00ff,eyeColor:0x00ffff,hp:9, speed:0.9,damage:15,scale:1.2,attackRange:2.2,attackCd:1.2},
-  hellknight:{name:'Hellknight',  bodyColor:0x1a0a0a,headColor:0xcc4400,eyeColor:0xff6600,hp:15,speed:0.9,damage:28,scale:1.6,attackRange:2.8,attackCd:2.0},
+  imp:       {name:'Imp',         bodyColor:0x8b3010,headColor:0xaa5030,eyeColor:0xff2200,hp:1,  speed:1.6,damage:10,scale:1.0,attackRange:2.0,attackCd:1.6},
+  pinky:     {name:'Pinky',       bodyColor:0xcc3020,headColor:0xff5040,eyeColor:0xff0000,hp:2,  speed:1.0,damage:20,scale:1.4,attackRange:2.5,attackCd:1.4},
+  cacodemon: {name:'Cacodemon',   bodyColor:0x8800cc,headColor:0xaa00ff,eyeColor:0x00ffff,hp:3,  speed:0.9,damage:15,scale:1.2,attackRange:2.2,attackCd:1.2},
+  hellknight:{name:'Hellknight',  bodyColor:0x1a0a0a,headColor:0xcc4400,eyeColor:0xff6600,hp:5,  speed:0.9,damage:28,scale:1.6,attackRange:2.8,attackCd:2.0},
 };
 
 function spawnDemon(dtype, pos, isTower, floorIdx){
@@ -1356,40 +1356,71 @@ function shoot(){
   G.ammo--;G.shots++;hudAmmo();flashScreen();
   const recoil=wdef.isSniperClass?(G.zoomed?.002:.02):G.currentWeapon==='supershotgun'?.018:.01;
   G.pitch-=recoil;
-  raycaster.setFromCamera(new THREE.Vector2(0,0),camera);
-  const pellets=G.currentWeapon==='supershotgun'?12:1;
-  const spread=G.currentWeapon==='supershotgun'?.1:wdef.isSniperClass&&!G.zoomed?.04:0;
 
-  for(let p=0;p<pellets;p++){
-    const dir=raycaster.ray.direction.clone();
-    if(spread>0){dir.x+=(Math.random()-.5)*spread;dir.y+=(Math.random()-.5)*spread;dir.normalize();}
-    const ray=new THREE.Raycaster(camera.position.clone(),dir);
+  // ── Detección de impacto por distancia + cono de visión ──────
+  // Funciona perfectamente con SkinnedMesh animados (raycasting falla con ellos)
+  const camDir = new THREE.Vector3(
+    -Math.sin(G.yaw)*Math.cos(G.pitch),
+    Math.sin(G.pitch),
+    -Math.cos(G.yaw)*Math.cos(G.pitch)
+  ).normalize();
 
-    let bestDist=999,bestEnemy=null,bestHS=false,bestPoint=null;
+  const pellets = G.currentWeapon==='supershotgun' ? 12 : 1;
+  // Radio del hitbox según arma: escopeta más amplia, sniper muy estrecha
+  const hitRadius = wdef.isSniperClass ? (G.zoomed?0.12:0.35)
+                  : G.currentWeapon==='supershotgun' ? 0.9
+                  : G.currentWeapon==='chaingun'     ? 0.55
+                  : 0.65;
+  const maxRange = wdef.isSniperClass ? 300 : 80;
+
+  let totalHits = 0;
+  const hitEnemies = new Set();
+
+  for(let p=0; p<pellets; p++){
+    let bestDist=maxRange, bestEnemy=null, bestHS=false;
     for(const e of G.enemies){
-      if(!e.alive)continue;
-      const objs=[e.group,...(e.group.children||[]),e.headHitbox].filter(Boolean);
-      const hits=ray.intersectObjects(objs,true);
-      if(hits.length>0&&hits[0].distance<bestDist){
-        bestDist=hits[0].distance;bestEnemy=e;
-        bestHS=hits[0].object===e.headHitbox||hits[0].object.userData?.isHead;
-        bestPoint=hits[0].point;
+      if(!e.alive) continue;
+      const ep = e.group.position;
+      const toEnemy = new THREE.Vector3(ep.x - camera.position.x, 0, ep.z - camera.position.z);
+      const dist = toEnemy.length();
+      if(dist > maxRange) continue;
+
+      // Ángulo horizontal entre dirección de mira y enemigo
+      const toEnemyNorm = toEnemy.clone().normalize();
+      const camDirFlat = new THREE.Vector3(camDir.x, 0, camDir.z).normalize();
+      const dot = camDirFlat.dot(toEnemyNorm);
+      if(dot < 0.1) continue; // enemigo detrás
+
+      // Radio del cuerpo en pantalla aproximado según distancia
+      const enemyRadius = hitRadius * (1 + 4/Math.max(dist,1));
+      const perpDist = Math.sqrt(Math.max(0, 1 - dot*dot)) * dist;
+
+      if(perpDist < enemyRadius && dist < bestDist){
+        // Headshot: apuntando al tercio superior del enemigo
+        const eyeToEnemy = new THREE.Vector3(ep.x - camera.position.x, ep.y+1.2 - camera.position.y, ep.z - camera.position.z).normalize();
+        const headDot = eyeToEnemy.dot(camDir);
+        bestHS = headDot > 0.97 && G.pitch < -0.05;
+        bestDist = dist;
+        bestEnemy = e;
       }
     }
-    if(bestEnemy){
+
+    if(bestEnemy && !hitEnemies.has(bestEnemy)){
+      hitEnemies.add(bestEnemy);
+      totalHits++;
       G.hits++;
-      const dmgMult=G.effects.speed?3:1;
-      let dmg=(bestHS?wdef.damage*3:wdef.damage)*dmgMult;
-      if(wdef.isSniperClass&&G.zoomed) dmg=wdef.damage*5;
-      bestEnemy.hp-=dmg;
-      spawnHitSpark(bestPoint);
-      setEnemyAnim(bestEnemy,'attack'); // enemy flinch reuse
-      if(bestEnemy.hp<=0) killEnemy(bestEnemy,bestHS||(wdef.isSniperClass&&G.zoomed));
-      else showMsg(wdef.isSniperClass&&G.zoomed?'· PRECISION ·':'· HIT ·','#ff4400',200);
-      if(bestEnemy.isBoss&&bestEnemy.alive) updateBossHUD(Math.max(0,bestEnemy.hp/bestEnemy.maxHp),bestEnemy.hp,bestEnemy.maxHp);
-      break; // each pellet stops at first hit
+      const dmgMult = G.effects.speed?3:1;
+      let dmg = (bestHS ? wdef.damage*3 : wdef.damage) * dmgMult;
+      if(wdef.isSniperClass && G.zoomed) dmg = wdef.damage*5;
+      bestEnemy.hp -= dmg;
+      spawnHitSpark(bestEnemy.group.position.clone().add(new THREE.Vector3(0,0.9,0)));
+      if(bestEnemy.hp <= 0) killEnemy(bestEnemy, bestHS||(wdef.isSniperClass&&G.zoomed));
+      else showMsg(bestHS?'⚡ HEADSHOT!':'· HIT ·', bestHS?'#ffff00':'#ff4400', 200);
+      if(bestEnemy.alive && bestEnemy.isBoss) updateBossHUD(Math.max(0,bestEnemy.hp/bestEnemy.maxHp),bestEnemy.hp,bestEnemy.maxHp);
     }
   }
+
+  if(totalHits===0) showMsg('','#ff4400',0);
   hudStats();
   if(G.ammo===0) setTimeout(reload,200);
 }
