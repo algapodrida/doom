@@ -292,10 +292,9 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:5;back
 
 <div id="lock-notice">Clic para capturar ratón · ESC para liberar</div>
 
-<!-- THREE.js + GLTFLoader + SkeletonUtils -->
+<!-- THREE.js + GLTFLoader -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="https://unpkg.com/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>
 <script>
 // ─────────────────────────────────────────────────────────────────
 //  RENDERER
@@ -344,69 +343,131 @@ for(let i=0;i<4;i++){
 //  GLB ASSET LOADER — loads Meshy AI character + animation GLBs
 // ─────────────────────────────────────────────────────────────────
 const GLB_ASSETS = {
-  walkScene: null,   // THREE.Group cloneable template (walking GLB)
-  walkClip:  null,   // AnimationClip — walk
-  runClip:   null,   // AnimationClip — run (used for attack)
-  loaded:    false,
-  failed:    false
+  walkScene: null,  // original loaded scene (never added to main scene)
+  walkClip:  null,  // AnimationClip — walk
+  runClip:   null,  // AnimationClip — run (attack)
+  // The Armature root node in Meshy AI GLBs has scale=0.01 baked in.
+  // Mesh vertices in accessor go 0→1.7 (local Armature space, in cm units).
+  // World height before any extra scaling = 1.7 * 0.01 = 0.017 m (tiny).
+  // We need to neutralise the 0.01 and apply a clean game scale instead.
+  loaded: false,
+  failed: false
 };
 
 async function loadGLBAssets() {
   if (!THREE.GLTFLoader) {
-    console.warn('GLTFLoader not found, using procedural enemies.');
+    console.warn('GLTFLoader not available, using procedural enemies.');
     GLB_ASSETS.failed = true; return;
   }
   const loader = new THREE.GLTFLoader();
   const load = url => new Promise((res, rej) =>
-    loader.load(url, res, undefined, e => { console.warn('GLB load failed:', url, e); rej(e); })
+    loader.load(url, res, undefined, e => { console.warn('GLB fail:', url, e); rej(e); })
   );
-
   try {
     const [walkGltf, runGltf] = await Promise.all([
       load('Meshy_AI_Animation_Walking_withSkin.glb'),
       load('Meshy_AI_Animation_Running_withSkin.glb')
     ]);
 
-    // Enable shadows on walk model (used as template)
-    walkGltf.scene.traverse(n => {
-      if (n.isMesh || n.isSkinnedMesh) { n.castShadow = true; }
+    // ── Neutralise the Meshy 0.01 Armature scale ───────────────
+    // Find the Armature node and set its scale to 1 so the vertices
+    // sit at their true local size (1.7 local units ≈ 170 cm).
+    // Then we scale the outer group to target game height in metres.
+    [walkGltf.scene, runGltf.scene].forEach(sc => {
+      sc.traverse(n => {
+        if (n.name === 'Armature') n.scale.set(1, 1, 1);
+      });
     });
 
-    // Meshy AI exports in centimetres → 0.01 converts to metres (1.7 m character)
-    GLB_ASSETS.autoScale = 0.01;
+    // With Armature scale=1, mesh vertices span 0→1.7 local units.
+    // We treat those as centimetres, so 1 local unit = 1 cm.
+    // Target enemy height in metres:
+    GLB_ASSETS.VERTEX_HEIGHT = 170; // cm (1.7 local units × 100 cm/unit)
+    // We'll compute scale per enemy as: targetHeightCm / VERTEX_HEIGHT
+
+    walkGltf.scene.traverse(n => {
+      if (n.isMesh || n.isSkinnedMesh) n.castShadow = true;
+    });
 
     GLB_ASSETS.walkScene = walkGltf.scene;
+    GLB_ASSETS.runScene  = runGltf.scene;
     GLB_ASSETS.walkClip  = walkGltf.animations[0] || null;
     GLB_ASSETS.runClip   = runGltf.animations[0]  || null;
     GLB_ASSETS.loaded    = true;
 
-    console.log('GLB assets loaded ✓ | autoScale:', autoScale.toFixed(4),
-      '| walkClip:', GLB_ASSETS.walkClip?.name,
-      '| runClip:',  GLB_ASSETS.runClip?.name);
+    console.log('GLB loaded ✓ | walk:', GLB_ASSETS.walkClip?.name, '| run:', GLB_ASSETS.runClip?.name);
   } catch(e) {
-    console.warn('GLB loading failed, using procedural enemies. Error:', e?.message || e);
+    console.warn('GLB load failed, using procedural enemies:', e?.message || e);
     GLB_ASSETS.failed = true;
   }
 }
 
-// Clone the GLB scene properly (handles SkinnedMesh / Skeleton)
+// ── Inline skeleton-aware clone (no external SkeletonUtils needed) ─
 function cloneGLBScene(src) {
-  if (THREE.SkeletonUtils && THREE.SkeletonUtils.clone) {
-    return THREE.SkeletonUtils.clone(src);
+  // Map: original Object3D UUID → cloned Object3D
+  const origToClone = new Map();
+
+  function cloneNode(orig) {
+    let node;
+    if (orig.isSkinnedMesh) {
+      node = new THREE.SkinnedMesh(orig.geometry, orig.material.clone());
+      node.castShadow = orig.castShadow;
+      node.receiveShadow = orig.receiveShadow;
+    } else if (orig.isBone) {
+      node = new THREE.Bone();
+    } else if (orig.isMesh) {
+      node = new THREE.Mesh(orig.geometry, orig.material.clone ? orig.material.clone() : orig.material);
+      node.castShadow = orig.castShadow;
+    } else {
+      node = orig.isScene ? new THREE.Group() : new THREE.Object3D();
+    }
+    node.name       = orig.name;
+    node.position.copy(orig.position);
+    node.rotation.copy(orig.rotation);
+    node.scale.copy(orig.scale);
+    node.visible    = orig.visible;
+    node.userData   = Object.assign({}, orig.userData);
+    origToClone.set(orig.uuid, node);
+    for (const child of orig.children) node.add(cloneNode(child));
+    return node;
   }
-  return src.clone(true); // fallback (may break skinning)
+
+  const cloned = cloneNode(src);
+
+  // Re-bind skeletons: replace original bone refs with cloned bone refs
+  const origSkins = [], cloneSkins = [];
+  src.traverse(n => { if (n.isSkinnedMesh) origSkins.push(n); });
+  cloned.traverse(n => { if (n.isSkinnedMesh) cloneSkins.push(n); });
+
+  origSkins.forEach((origMesh, i) => {
+    const cm = cloneSkins[i];
+    if (!cm) return;
+    const newBones = origMesh.skeleton.bones.map(b => {
+      const c = origToClone.get(b.uuid);
+      return c || b; // fallback to original if not found
+    });
+    const newSkel = new THREE.Skeleton(newBones, origMesh.skeleton.boneInverses);
+    cm.bind(newSkel, origMesh.bindMatrix.clone());
+  });
+
+  return cloned;
 }
 
-// ── Build an enemy from the GLB model ─────────────────────────────
+// ── Build an enemy from the GLB model ────────────────────────────
 function buildGLBEnemy(cfg) {
-  const s = cfg.scale || 1;
+  const s = cfg.scale || 1; // game-level size multiplier per demon type
+
+  // Clone the walk scene (contains mesh + skeleton)
   const group = cloneGLBScene(GLB_ASSETS.walkScene);
 
-  // Scale to match game units, adjusted by enemy size
-  const sc = GLB_ASSETS.autoScale * s;
+  // Target height for a normal enemy (s=1) = 1.4 m → scale = 1.4/1.7
+  // (VERTEX_HEIGHT = 170 cm; we treat 1 local unit = 1 cm after removing 0.01 Armature scale)
+  const targetM = 1.4 * s;           // metres
+  const localH  = 170;               // local-space height (cm)
+  const sc      = targetM / localH;  // e.g. 1.4/170 ≈ 0.00824
   group.scale.set(sc, sc, sc);
 
-  // Tint all mesh materials to enemy body color
+  // Tint materials to demon body colour
   group.traverse(node => {
     if ((node.isMesh || node.isSkinnedMesh) && node.material) {
       node.material = node.material.clone();
@@ -415,53 +476,41 @@ function buildGLBEnemy(cfg) {
     }
   });
 
-  // Boss: extra glow eyes + horns placeholder
+  // Boss glow
   if (cfg.isBoss) {
     const bossGlow = new THREE.PointLight(0xff0000, 3, 8);
-    bossGlow.position.set(0, 1.6 * sc, 0);
+    bossGlow.position.set(0, targetM * 0.9, 0);
     group.add(bossGlow);
   }
 
-  // AnimationMixer bound to this clone's root
+  // AnimationMixer — must target the SAME root object as the skeleton
   const mixer = new THREE.AnimationMixer(group);
 
-  // Build clip actions — walk & run from loaded clips
-  const walkAction = GLB_ASSETS.walkClip ? mixer.clipAction(GLB_ASSETS.walkClip) : null;
-  const runAction  = GLB_ASSETS.runClip  ? mixer.clipAction(GLB_ASSETS.runClip)  : null;
+  // Remap clip track names to match cloned object names (they should already match)
+  const walkAction = GLB_ASSETS.walkClip
+    ? mixer.clipAction(GLB_ASSETS.walkClip) : null;
+  const runAction  = GLB_ASSETS.runClip
+    ? mixer.clipAction(GLB_ASSETS.runClip)  : null;
 
-  // Start idle (slow walk)
-  if (walkAction) {
-    walkAction.timeScale = 0.5;
-    walkAction.play();
-  }
+  if (walkAction) { walkAction.timeScale = 0.6; walkAction.play(); }
 
   const clips = {
     idle:   walkAction,
     walk:   walkAction,
     attack: runAction || walkAction,
-    death:  null  // handled by fade-out + removal
+    death:  null
   };
 
-  // Head hitbox for raycasting (invisible sphere at ~head height)
+  // Head hitbox (invisible, for raycasting headshots)
   const headHitbox = new THREE.Mesh(
-    new THREE.SphereGeometry(0.22 * s, 6, 6),
+    new THREE.SphereGeometry(0.18 * s, 6, 6),
     new THREE.MeshBasicMaterial({ visible: false })
   );
-  headHitbox.position.set(0, 0.9 * s, 0);
+  headHitbox.position.set(0, targetM * 0.88, 0);
   headHitbox.userData.isHead = true;
   group.add(headHitbox);
 
-  return {
-    group,
-    torsoMesh:  group,   // used for mixer root reference
-    headMesh:   null,
-    headHitbox,
-    mixer,
-    clips,
-    bones:    {},
-    skeleton: null,
-    head:     null
-  };
+  return { group, torsoMesh: group, headMesh: null, headHitbox, mixer, clips, bones: {}, skeleton: null, head: null };
 }
 
 // ─────────────────────────────────────────────────────────────────
