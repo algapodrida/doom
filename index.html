@@ -292,16 +292,11 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:5;back
 
 <div id="lock-notice">Clic para capturar ratón · ESC para liberar</div>
 
-<!-- THREE.js + GLTFLoader -->
+<!-- THREE.js + GLTFLoader + SkeletonUtils -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>
 <script>
-// ─────────────────────────────────────────────────────────────────
-//  INLINE GLTFLoader (r128 compatible, no import needed)
-// ─────────────────────────────────────────────────────────────────
-// We'll use a procedural humanoid mesh system with skeletal animation
-// (GLB loading from URL requires CORS-friendly hosting; instead we
-//  build realistic animated humanoids procedurally using SkinnedMesh)
-
 // ─────────────────────────────────────────────────────────────────
 //  RENDERER
 // ─────────────────────────────────────────────────────────────────
@@ -346,10 +341,139 @@ for(let i=0;i<4;i++){
 }
 
 // ─────────────────────────────────────────────────────────────────
+//  GLB ASSET LOADER — loads Meshy AI character + animation GLBs
+// ─────────────────────────────────────────────────────────────────
+const GLB_ASSETS = {
+  walkScene: null,   // THREE.Group cloneable template (walking GLB)
+  walkClip:  null,   // AnimationClip — walk
+  runClip:   null,   // AnimationClip — run (used for attack)
+  loaded:    false,
+  failed:    false
+};
+
+async function loadGLBAssets() {
+  if (!THREE.GLTFLoader) {
+    console.warn('GLTFLoader not found, using procedural enemies.');
+    GLB_ASSETS.failed = true; return;
+  }
+  const loader = new THREE.GLTFLoader();
+  const load = url => new Promise((res, rej) =>
+    loader.load(url, res, undefined, e => { console.warn('GLB load failed:', url, e); rej(e); })
+  );
+
+  try {
+    const [walkGltf, runGltf] = await Promise.all([
+      load('Meshy_AI_Animation_Walking_withSkin.glb'),
+      load('Meshy_AI_Animation_Running_withSkin.glb')
+    ]);
+
+    // Enable shadows on walk model (used as template)
+    walkGltf.scene.traverse(n => {
+      if (n.isMesh || n.isSkinnedMesh) { n.castShadow = true; }
+    });
+
+    // Auto-scale to fit game units: measure bounding box height → target ~1.8
+    const bbox = new THREE.Box3().setFromObject(walkGltf.scene);
+    const modelH = bbox.max.y - bbox.min.y;
+    const autoScale = modelH > 0 ? 1.8 / modelH : 1;
+    GLB_ASSETS.autoScale = autoScale;
+
+    GLB_ASSETS.walkScene = walkGltf.scene;
+    GLB_ASSETS.walkClip  = walkGltf.animations[0] || null;
+    GLB_ASSETS.runClip   = runGltf.animations[0]  || null;
+    GLB_ASSETS.loaded    = true;
+
+    console.log('GLB assets loaded ✓ | autoScale:', autoScale.toFixed(4),
+      '| walkClip:', GLB_ASSETS.walkClip?.name,
+      '| runClip:',  GLB_ASSETS.runClip?.name);
+  } catch(e) {
+    console.warn('GLB loading failed, using procedural enemies. Error:', e?.message || e);
+    GLB_ASSETS.failed = true;
+  }
+}
+
+// Clone the GLB scene properly (handles SkinnedMesh / Skeleton)
+function cloneGLBScene(src) {
+  if (THREE.SkeletonUtils && THREE.SkeletonUtils.clone) {
+    return THREE.SkeletonUtils.clone(src);
+  }
+  return src.clone(true); // fallback (may break skinning)
+}
+
+// ── Build an enemy from the GLB model ─────────────────────────────
+function buildGLBEnemy(cfg) {
+  const s = cfg.scale || 1;
+  const group = cloneGLBScene(GLB_ASSETS.walkScene);
+
+  // Scale to match game units, adjusted by enemy size
+  const sc = GLB_ASSETS.autoScale * s;
+  group.scale.set(sc, sc, sc);
+
+  // Tint all mesh materials to enemy body color
+  group.traverse(node => {
+    if ((node.isMesh || node.isSkinnedMesh) && node.material) {
+      node.material = node.material.clone();
+      node.material.color = new THREE.Color(cfg.bodyColor || 0x8b3010);
+      node.castShadow = true;
+    }
+  });
+
+  // Boss: extra glow eyes + horns placeholder
+  if (cfg.isBoss) {
+    const bossGlow = new THREE.PointLight(0xff0000, 3, 8);
+    bossGlow.position.set(0, 1.6 * sc, 0);
+    group.add(bossGlow);
+  }
+
+  // AnimationMixer bound to this clone's root
+  const mixer = new THREE.AnimationMixer(group);
+
+  // Build clip actions — walk & run from loaded clips
+  const walkAction = GLB_ASSETS.walkClip ? mixer.clipAction(GLB_ASSETS.walkClip) : null;
+  const runAction  = GLB_ASSETS.runClip  ? mixer.clipAction(GLB_ASSETS.runClip)  : null;
+
+  // Start idle (slow walk)
+  if (walkAction) {
+    walkAction.timeScale = 0.5;
+    walkAction.play();
+  }
+
+  const clips = {
+    idle:   walkAction,
+    walk:   walkAction,
+    attack: runAction || walkAction,
+    death:  null  // handled by fade-out + removal
+  };
+
+  // Head hitbox for raycasting (invisible sphere at ~head height)
+  const headHitbox = new THREE.Mesh(
+    new THREE.SphereGeometry(0.22 * s, 6, 6),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  headHitbox.position.set(0, 0.9 * s, 0);
+  headHitbox.userData.isHead = true;
+  group.add(headHitbox);
+
+  return {
+    group,
+    torsoMesh:  group,   // used for mixer root reference
+    headMesh:   null,
+    headHitbox,
+    mixer,
+    clips,
+    bones:    {},
+    skeleton: null,
+    head:     null
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────
 //  SKELETAL HUMANOID MODEL BUILDER
 //  Creates a rigged, animated humanoid using SkinnedMesh + Bones
 // ─────────────────────────────────────────────────────────────────
 function buildHumanoid(cfg){
+  // ── Use GLB model if loaded ──
+  if (GLB_ASSETS.loaded) return buildGLBEnemy(cfg);
   // cfg: { bodyColor, headColor, scale, isBoss, eyeColor }
   const s=cfg.scale||1;
   const group=new THREE.Group();
@@ -1159,8 +1283,13 @@ const raycaster=new THREE.Raycaster();
 function setEnemyAnim(e, animName){
   if(e.lastAnim===animName||!e.rig) return;
   const clips=e.rig.clips;
-  Object.values(clips).forEach(a=>a.fadeOut(.15));
+  // Guard: skip null entries (GLB enemies may have null death clip)
+  Object.values(clips).forEach(a=>{ if(a) a.fadeOut(.15); });
   if(clips[animName]){
+    // Restore normal time scale when switching animations
+    if(animName==='walk')   clips[animName].timeScale=1.2;
+    if(animName==='idle')   clips[animName].timeScale=0.5;
+    if(animName==='attack') clips[animName].timeScale=1.5;
     clips[animName].reset().fadeIn(.15).play();
   }
   e.lastAnim=animName;
@@ -1558,19 +1687,27 @@ function setLoadingProgress(pct,label){
 }
 
 async function init(){
-  setLoadingProgress(10,'CONSTRUYENDO MUNDO...');
+  setLoadingProgress(5,'CARGANDO MODELOS GLB...');
+  await loadGLBAssets();
+  if(GLB_ASSETS.loaded){
+    setLoadingProgress(18,'MODELOS CARGADOS ✓');
+  } else {
+    setLoadingProgress(18,'MODELOS PROCEDURALES (GLB no encontrado)');
+  }
+  await delay(80);
+  setLoadingProgress(28,'CONSTRUYENDO MUNDO...');
   buildHellWorld();
   await delay(100);
-  setLoadingProgress(35,'FORJANDO LA TORRE...');
+  setLoadingProgress(48,'FORJANDO LA TORRE...');
   buildTower();
   await delay(100);
-  setLoadingProgress(55,'INVOCANDO DEMONIOS...');
+  setLoadingProgress(65,'INVOCANDO DEMONIOS...');
   for(let i=0;i<10;i++) spawnFieldDemon();
   await delay(100);
-  setLoadingProgress(70,'ESPARCIENDO BOTÍN...');
+  setLoadingProgress(78,'ESPARCIENDO BOTÍN...');
   spawnRandomItems();
   await delay(100);
-  setLoadingProgress(90,'PREPARANDO HUD...');
+  setLoadingProgress(92,'PREPARANDO HUD...');
   buildInventoryHUD();updateHealthHUD();hudAmmo();hudStats();updateTowerHUD();
   document.getElementById('weapon-name').textContent='SUPER ESCOPETA';
   await delay(200);
