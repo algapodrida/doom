@@ -375,7 +375,7 @@ async function loadGLBAssets() {
     // Auto-scale to fit game units: measure bounding box height → target ~1.8
     const bbox = new THREE.Box3().setFromObject(walkGltf.scene);
     const modelH = bbox.max.y - bbox.min.y;
-    const autoScale = modelH > 0 ? 1.8 / modelH : 1;
+    const autoScale = modelH > 0 ? 0.9 / modelH : 1;
     GLB_ASSETS.autoScale = autoScale;
 
     GLB_ASSETS.walkScene = walkGltf.scene;
