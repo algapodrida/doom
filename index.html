@@ -372,11 +372,8 @@ async function loadGLBAssets() {
       if (n.isMesh || n.isSkinnedMesh) { n.castShadow = true; }
     });
 
-    // Auto-scale to fit game units: measure bounding box height → target ~1.8
-    const bbox = new THREE.Box3().setFromObject(walkGltf.scene);
-    const modelH = bbox.max.y - bbox.min.y;
-    const autoScale = modelH > 0 ? 0.9 / modelH : 1;
-    GLB_ASSETS.autoScale = autoScale;
+    // Meshy AI exports in centimetres → 0.01 converts to metres (1.7 m character)
+    GLB_ASSETS.autoScale = 0.01;
 
     GLB_ASSETS.walkScene = walkGltf.scene;
     GLB_ASSETS.walkClip  = walkGltf.animations[0] || null;
