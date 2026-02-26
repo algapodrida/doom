@@ -1,0 +1,1598 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>DOOMSHOT — HELL TOWER</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#000;overflow:hidden;font-family:'Courier New',monospace;cursor:crosshair;}
+canvas{display:block;}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:5;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);}
+#vignette{position:fixed;inset:0;pointer-events:none;z-index:6;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,0.75) 100%);}
+#hud{position:fixed;inset:0;pointer-events:none;z-index:10;}
+
+/* ── LOADING SCREEN ── */
+#loading{position:fixed;inset:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;color:#cc2200;font-family:'Oswald',sans-serif;}
+#loading h2{font-size:40px;letter-spacing:10px;text-shadow:0 0 30px #ff0000;margin-bottom:20px;}
+#loading-bar-wrap{width:300px;height:6px;background:rgba(255,0,0,0.1);border:1px solid #440000;margin-bottom:12px;}
+#loading-bar{height:100%;width:0%;background:linear-gradient(90deg,#aa0000,#ff4400);transition:width .3s;}
+#loading-status{font-size:10px;letter-spacing:3px;color:#440000;}
+
+/* ── BOTTOM HUD ── */
+#hud-bottom{position:absolute;bottom:0;left:0;right:0;height:80px;background:linear-gradient(180deg,#1a0000,#0d0000);border-top:3px solid #cc2200;box-shadow:0 -4px 30px rgba(200,20,0,0.4);}
+#face-panel{width:80px;height:72px;position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;background:#1a0000;border:2px solid #661100;}
+#face-emoji{font-size:34px;filter:drop-shadow(0 0 8px #ff2200);transition:all 0.1s;}
+#hp-section{position:absolute;left:20px;display:flex;flex-direction:column;}
+#hp-label{color:#cc2200;font-size:9px;letter-spacing:4px;margin-bottom:2px;font-family:'Oswald',sans-serif;}
+#hp-num{font-size:46px;font-family:'Oswald',sans-serif;font-weight:700;color:#cc2200;line-height:1;text-shadow:0 0 20px #ff0000;}
+#hp-bar{width:140px;height:5px;background:rgba(255,0,0,0.1);border:1px solid #440000;margin-top:3px;}
+#hp-fill{height:100%;background:linear-gradient(90deg,#aa0000,#ff3300);transition:width .2s;}
+#arm-section{position:absolute;left:185px;display:flex;flex-direction:column;}
+#arm-label{color:#2255aa;font-size:9px;letter-spacing:4px;margin-bottom:2px;font-family:'Oswald',sans-serif;}
+#arm-num{font-size:46px;font-family:'Oswald',sans-serif;font-weight:700;color:#2255aa;line-height:1;text-shadow:0 0 20px #0044ff;}
+#ammo-section{position:absolute;right:20px;display:flex;flex-direction:column;align-items:flex-end;}
+#ammo-label{color:#ffaa00;font-size:9px;letter-spacing:4px;margin-bottom:2px;font-family:'Oswald',sans-serif;}
+#ammo-num{font-size:46px;font-family:'Oswald',sans-serif;font-weight:700;color:#ffaa00;line-height:1;text-shadow:0 0 20px #ff8800;}
+#ammo-reserve{color:#664400;font-size:11px;letter-spacing:2px;}
+
+/* ── TOP STATS ── */
+#top-right{position:absolute;top:14px;right:20px;text-align:right;font-family:'Oswald',sans-serif;}
+#top-right .tr-label{color:#440000;font-size:9px;letter-spacing:3px;}
+#top-right .tr-val{color:#cc2200;font-size:22px;letter-spacing:2px;text-shadow:0 0 10px #ff0000;}
+
+/* ── TOWER HUD ── */
+#tower-hud{position:absolute;top:14px;left:20px;font-family:'Oswald',sans-serif;display:none;}
+#tower-floor-label{color:#440000;font-size:9px;letter-spacing:3px;}
+#tower-floor-val{color:#ff4400;font-size:22px;letter-spacing:2px;text-shadow:0 0 12px #ff2200;}
+#tower-enemies-label{color:#440000;font-size:9px;letter-spacing:3px;margin-top:6px;}
+#tower-enemies-val{color:#ff6600;font-size:18px;letter-spacing:2px;}
+
+/* ── BOSS BAR ── */
+#boss-hud{position:absolute;bottom:170px;left:50%;transform:translateX(-50%);width:420px;display:none;text-align:center;}
+#boss-name{color:#ff0000;font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:5px;text-shadow:0 0 10px #ff0000;margin-bottom:5px;}
+#boss-bar-wrap{width:100%;height:16px;background:rgba(100,0,0,0.3);border:1px solid #660000;position:relative;}
+#boss-fill{height:100%;background:linear-gradient(90deg,#880000,#ff2200,#ff6600);transition:width .15s;}
+#boss-hp-text{position:absolute;top:0;left:0;right:0;font-size:9px;color:#ff8800;font-family:'Oswald',sans-serif;letter-spacing:2px;line-height:16px;}
+
+/* ── WEAPON NAME ── */
+#weapon-name{position:absolute;right:20px;bottom:90px;color:#ffaa00;font-size:10px;letter-spacing:5px;font-family:'Oswald',sans-serif;text-shadow:0 0 8px #ff8800;}
+
+/* ── INVENTORY ── */
+#inventory{position:absolute;bottom:85px;left:50%;transform:translateX(-50%);display:flex;gap:4px;}
+.inv-slot{width:50px;height:50px;border:1px solid rgba(180,40,0,0.3);background:rgba(20,0,0,0.7);display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;transition:all 0.1s;clip-path:polygon(3px 0%,calc(100% - 3px) 0%,100% 3px,100% calc(100% - 3px),calc(100% - 3px) 100%,3px 100%,0% calc(100% - 3px),0% 3px);}
+.inv-slot.selected{border-color:#cc2200;background:rgba(80,0,0,0.8);box-shadow:0 0 12px rgba(200,34,0,0.6);}
+.inv-slot .slot-icon{font-size:20px;line-height:1;}
+.inv-slot .slot-name{font-size:6px;color:#660000;letter-spacing:1px;margin-top:1px;text-align:center;}
+.inv-slot .slot-num{position:absolute;top:2px;left:4px;font-size:7px;color:#440000;}
+.inv-slot .slot-count{position:absolute;bottom:2px;right:3px;font-size:7px;color:#cc8800;}
+.inv-slot.selected .slot-name{color:#ff6600;}
+.inv-slot.weapon{border-color:rgba(255,140,0,0.25);}
+.inv-slot.potion{border-color:rgba(80,160,255,0.35);}
+.inv-slot.powerup{border-color:rgba(0,255,100,0.2);}
+.inv-slot.sniper-type{border-color:rgba(0,255,180,0.35);}
+
+/* ── RELOAD BAR ── */
+#reloadbar{position:absolute;bottom:138px;right:20px;width:110px;height:4px;background:rgba(255,255,255,0.06);display:none;border:1px solid rgba(255,100,0,0.3);}
+#reloadfill{height:100%;width:0;background:linear-gradient(90deg,#ff2200,#ff8800);}
+
+/* ── CROSSHAIR ── */
+#crosshair{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:18px;height:18px;}
+#crosshair::before,#crosshair::after{content:'';position:absolute;background:rgba(255,60,30,0.9);}
+#crosshair::before{width:100%;height:2px;top:50%;left:0;transform:translateY(-50%);}
+#crosshair::after{height:100%;width:2px;left:50%;top:0;transform:translateX(-50%);}
+#crosshair-gap{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:5px;height:5px;background:#0d0000;}
+
+/* ── REGULAR SCOPE ── */
+#scope{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:420px;height:420px;display:none;}
+#scope svg{width:100%;height:100%;}
+
+/* ── SNIPER SCOPE ── */
+#sniper-scope{position:absolute;top:0;left:0;right:0;bottom:0;display:none;}
+#sniper-scope .sb-left{position:absolute;top:0;left:0;bottom:0;right:calc(50% + 200px);background:rgba(0,0,0,0.99);}
+#sniper-scope .sb-right{position:absolute;top:0;right:0;bottom:0;left:calc(50% + 200px);background:rgba(0,0,0,0.99);}
+#sniper-scope .sb-top{position:absolute;left:0;right:0;top:0;bottom:calc(50% + 200px);background:rgba(0,0,0,0.99);}
+#sniper-scope .sb-bot{position:absolute;left:0;right:0;bottom:0;top:calc(50% + 200px);background:rgba(0,0,0,0.99);}
+#sniper-scope-svg{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:400px;height:400px;}
+
+/* ── MESSAGES ── */
+#msg{position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);font-size:30px;letter-spacing:10px;font-weight:700;font-family:'Oswald',sans-serif;color:#ff1100;opacity:0;transition:opacity 0.2s;text-shadow:0 0 30px #ff0000;white-space:nowrap;}
+#tower-msg{position:absolute;top:28%;left:50%;transform:translate(-50%,-50%);font-size:20px;letter-spacing:8px;font-family:'Oswald',sans-serif;color:#ff8800;opacity:0;transition:opacity 0.4s;text-shadow:0 0 20px #ff4400;white-space:nowrap;text-align:center;}
+#pickup-notice{position:absolute;top:34%;left:50%;transform:translate(-50%,-50%);font-size:13px;letter-spacing:4px;color:#ffdd44;font-family:'Oswald',sans-serif;opacity:0;transition:opacity 0.3s;text-shadow:0 0 12px #ffaa00;pointer-events:none;}
+#killfeed{position:absolute;top:20px;right:20px;text-align:right;font-size:11px;letter-spacing:3px;color:#cc2200;line-height:2.4;font-family:'Oswald',sans-serif;}
+#killfeed div{animation:kfSlide 0.2s ease-out;}
+@keyframes kfSlide{from{transform:translateX(30px);opacity:0;}to{transform:translateX(0);opacity:1;}}
+#effects{position:absolute;top:14px;left:20px;font-size:10px;letter-spacing:2px;line-height:2.2;font-family:'Oswald',sans-serif;}
+#zoom-label{position:absolute;bottom:147px;right:20px;color:#442200;font-size:9px;letter-spacing:3px;}
+#status-icons{position:absolute;bottom:147px;left:20px;color:#660000;font-size:9px;letter-spacing:2px;font-family:'Oswald',sans-serif;}
+
+/* ── OVERLAYS ── */
+#dmg-overlay{position:fixed;inset:0;background:rgba(200,0,0,0);pointer-events:none;z-index:40;transition:background 0.1s;}
+#flash{position:fixed;inset:0;background:#ff2200;opacity:0;pointer-events:none;z-index:50;}
+#tower-lock-overlay{position:fixed;inset:0;pointer-events:none;z-index:8;border:4px solid rgba(255,0,0,0);transition:border-color 0.5s;}
+#tower-lock-overlay.locked{border-color:rgba(255,50,0,0.5);box-shadow:inset 0 0 60px rgba(255,0,0,0.12);}
+
+/* ── CONTROLS HINT ── */
+#controls-hint{position:absolute;bottom:90px;right:20px;font-size:8px;letter-spacing:1px;color:#2a0000;line-height:2;text-align:right;}
+
+/* ── DEATH / VICTORY ── */
+#death-screen,#victory-screen{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:300;}
+#death-screen{background:rgba(10,0,0,0.96);}
+#victory-screen{background:rgba(0,5,0,0.96);}
+#death-screen h2{font-size:64px;letter-spacing:8px;color:#ff0000;font-family:'Oswald',sans-serif;text-shadow:0 0 60px #ff0000;margin-bottom:10px;animation:deathPulse 1s ease-in-out infinite alternate;}
+@keyframes deathPulse{from{text-shadow:0 0 40px #ff0000;}to{text-shadow:0 0 80px #ff0000,0 0 150px #440000;}}
+#victory-screen h2{font-size:52px;letter-spacing:8px;color:#ff8800;font-family:'Oswald',sans-serif;text-shadow:0 0 60px #ffaa00;margin-bottom:10px;animation:victoryPulse 1.5s ease-in-out infinite alternate;}
+@keyframes victoryPulse{from{text-shadow:0 0 40px #ff6600;}to{text-shadow:0 0 80px #ffaa00;}}
+.stat-line{color:#660000;letter-spacing:4px;font-size:14px;margin:6px 0;font-family:'Oswald',sans-serif;}
+.stat-line span{color:#cc2200;}
+#victory-screen .stat-line span{color:#ff8800;}
+.end-btn{margin-top:28px;padding:14px 48px;background:transparent;border:2px solid #cc0000;color:#cc0000;font-family:'Oswald',sans-serif;font-size:16px;letter-spacing:8px;cursor:pointer;transition:all 0.2s;}
+.end-btn:hover{background:#cc0000;color:#000;box-shadow:0 0 30px #ff0000;}
+#victory-screen .end-btn{border-color:#ff8800;color:#ff8800;}
+#victory-screen .end-btn:hover{background:#ff8800;color:#000;}
+
+/* ── INTRO ── */
+#intro{position:fixed;inset:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:200;color:#fff;overflow:hidden;}
+#intro::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 120%,#330000 0%,#000 60%);}
+#intro-content{position:relative;z-index:1;text-align:center;}
+#game-title{font-size:72px;letter-spacing:14px;font-family:'Oswald',sans-serif;font-weight:700;color:#ff2200;text-shadow:0 0 40px #ff0000,0 0 80px #880000;margin-bottom:2px;animation:titlePulse 2s ease-in-out infinite alternate;}
+@keyframes titlePulse{from{text-shadow:0 0 30px #ff0000;}to{text-shadow:0 0 60px #ff2200,0 0 120px #aa0000;}}
+.game-sub{color:#440000;letter-spacing:7px;font-size:10px;margin-bottom:28px;font-family:'Oswald',sans-serif;}
+.controls-table{border-collapse:collapse;margin-bottom:24px;}
+.controls-table td{padding:4px 16px;font-size:11px;letter-spacing:2px;color:#550000;}
+.controls-table td:first-child{color:#cc3300;text-align:right;border-right:1px solid #220000;}
+#startBtn{padding:14px 48px;background:transparent;border:2px solid #cc0000;color:#cc0000;font-family:'Oswald',sans-serif;font-size:15px;letter-spacing:10px;cursor:pointer;transition:all 0.25s;}
+#startBtn:hover{background:#cc0000;color:#000;box-shadow:0 0 40px #ff0000;}
+.skull{font-size:26px;opacity:0.12;position:absolute;animation:skullFloat 6s ease-in-out infinite;}
+@keyframes skullFloat{0%,100%{transform:translateY(0) rotate(-5deg);}50%{transform:translateY(-20px) rotate(5deg);}}
+#lock-notice{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);color:#330000;font-size:9px;letter-spacing:3px;z-index:20;pointer-events:none;font-family:'Oswald',sans-serif;}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loading">
+  <h2>CARGANDO INFIERNO</h2>
+  <div id="loading-bar-wrap"><div id="loading-bar"></div></div>
+  <div id="loading-status">INICIALIZANDO...</div>
+</div>
+
+<!-- INTRO -->
+<div id="intro" style="display:none">
+  <div class="skull" style="top:10%;left:8%">💀</div>
+  <div class="skull" style="top:20%;right:10%;animation-delay:1s">💀</div>
+  <div class="skull" style="bottom:20%;left:12%;animation-delay:2s">💀</div>
+  <div class="skull" style="bottom:15%;right:8%;animation-delay:3s">💀</div>
+  <div class="skull" style="top:50%;left:5%;animation-delay:1.5s">🔥</div>
+  <div class="skull" style="top:45%;right:5%;animation-delay:2.5s">🔥</div>
+  <div id="intro-content">
+    <div id="game-title">DOOMSHOT</div>
+    <div class="game-sub">HELL TOWER — RIP AND TEAR UNTIL IT IS DONE</div>
+    <table class="controls-table">
+      <tr><td><b>WASD</b></td><td>Moverse</td></tr>
+      <tr><td><b>Ratón</b></td><td>Apuntar</td></tr>
+      <tr><td><b>Click</b></td><td>Disparar</td></tr>
+      <tr><td><b>E</b></td><td>Zoom/Mira</td></tr>
+      <tr><td><b>R</b></td><td>Recargar</td></tr>
+      <tr><td><b>F / Enter</b></td><td>Usar ítem seleccionado</td></tr>
+      <tr><td><b>Espacio</b></td><td>Saltar</td></tr>
+      <tr><td><b>C</b></td><td>Agacharse</td></tr>
+      <tr><td><b>← → / 1-9</b></td><td>Seleccionar slot</td></tr>
+    </table>
+    <button id="startBtn">[ ENTRAR AL INFIERNO ]</button>
+  </div>
+</div>
+
+<!-- HUD -->
+<div id="vignette"></div>
+<div id="tower-lock-overlay"></div>
+<div id="hud">
+  <div id="effects"></div>
+  <div id="tower-hud">
+    <div id="tower-floor-label">PISO</div>
+    <div id="tower-floor-val">—</div>
+    <div id="tower-enemies-label">DEMONIOS</div>
+    <div id="tower-enemies-val">—</div>
+  </div>
+  <div id="top-right">
+    <div class="tr-label">BAJAS</div>
+    <div class="tr-val" id="sKills">0</div>
+    <div class="tr-label" style="margin-top:6px">PUNTUACIÓN</div>
+    <div class="tr-val" id="sScore">0</div>
+    <div class="tr-label" style="margin-top:6px">PRECISIÓN</div>
+    <div class="tr-val" id="sAcc" style="font-size:14px">—</div>
+  </div>
+  <div id="killfeed"></div>
+  <div id="boss-hud">
+    <div id="boss-name">☠ ARCH-VILE — SEÑOR DEL INFIERNO ☠</div>
+    <div id="boss-bar-wrap">
+      <div id="boss-fill"></div>
+      <div id="boss-hp-text">200 / 200</div>
+    </div>
+  </div>
+  <div id="weapon-name">SUPER ESCOPETA</div>
+  <div id="reloadbar"><div id="reloadfill"></div></div>
+  <div id="inventory"></div>
+  <div id="crosshair"><div id="crosshair-gap"></div></div>
+  <div id="scope">
+    <svg viewBox="0 0 420 420">
+      <defs><mask id="hole"><rect width="420" height="420" fill="white"/><circle cx="210" cy="210" r="200" fill="black"/></mask></defs>
+      <rect width="420" height="420" fill="rgba(0,0,0,0.98)" mask="url(#hole)"/>
+      <line x1="210" y1="10" x2="210" y2="175" stroke="#ff1100" stroke-width="1.2" opacity="0.9"/>
+      <line x1="210" y1="245" x2="210" y2="410" stroke="#ff1100" stroke-width="1.2" opacity="0.9"/>
+      <line x1="10"  y1="210" x2="175" y2="210" stroke="#ff1100" stroke-width="1.2" opacity="0.9"/>
+      <line x1="245" y1="210" x2="410" y2="210" stroke="#ff1100" stroke-width="1.2" opacity="0.9"/>
+      <circle cx="210" cy="210" r="3.5" fill="#ff1100" opacity="0.9"/>
+      <circle cx="210" cy="210" r="200" fill="none" stroke="rgba(200,30,0,0.15)" stroke-width="2"/>
+    </svg>
+  </div>
+  <div id="sniper-scope">
+    <div class="sb-left"></div><div class="sb-right"></div>
+    <div class="sb-top"></div><div class="sb-bot"></div>
+    <svg id="sniper-scope-svg" viewBox="0 0 400 400">
+      <defs><mask id="shole"><rect width="400" height="400" fill="white"/><circle cx="200" cy="200" r="188" fill="black"/></mask></defs>
+      <rect width="400" height="400" fill="rgba(0,0,0,0.99)" mask="url(#shole)"/>
+      <line x1="200" y1="12" x2="200" y2="175" stroke="#00ff66" stroke-width="0.9" opacity="0.9"/>
+      <line x1="200" y1="225" x2="200" y2="388" stroke="#00ff66" stroke-width="0.9" opacity="0.9"/>
+      <line x1="12"  y1="200" x2="175" y2="200" stroke="#00ff66" stroke-width="0.9" opacity="0.9"/>
+      <line x1="225" y1="200" x2="388" y2="200" stroke="#00ff66" stroke-width="0.9" opacity="0.9"/>
+      <circle cx="200" cy="165" r="2.5" fill="#00ff66" opacity="0.7"/>
+      <circle cx="200" cy="235" r="2.5" fill="#00ff66" opacity="0.7"/>
+      <circle cx="165" cy="200" r="2.5" fill="#00ff66" opacity="0.7"/>
+      <circle cx="235" cy="200" r="2.5" fill="#00ff66" opacity="0.7"/>
+      <circle cx="200" cy="200" r="2.2" fill="#00ff66" opacity="0.95"/>
+      <circle cx="200" cy="200" r="188" fill="none" stroke="rgba(0,200,60,0.15)" stroke-width="1.5"/>
+      <text x="208" y="162" fill="#00ff66" font-size="7" font-family="Courier New" opacity="0.5">100m</text>
+      <text x="208" y="132" fill="#00ff66" font-size="7" font-family="Courier New" opacity="0.4">200m</text>
+    </svg>
+  </div>
+  <div id="msg"></div>
+  <div id="tower-msg"></div>
+  <div id="pickup-notice"></div>
+  <div id="status-icons"></div>
+  <div id="zoom-label">ZOOM: 1×</div>
+  <div id="controls-hint">F/Enter Usar ítem · Q Tirar<br>R Recargar · E Zoom · C Agachar<br>← → ó 1-9 Seleccionar</div>
+  <div id="hud-bottom">
+    <div id="hp-section">
+      <div id="hp-label">❤ VIDA</div>
+      <div id="hp-num">100</div>
+      <div id="hp-bar"><div id="hp-fill" style="width:100%"></div></div>
+    </div>
+    <div id="arm-section">
+      <div id="arm-label">🛡 ARMOR</div>
+      <div id="arm-num">0</div>
+    </div>
+    <div id="face-panel"><div id="face-emoji">😐</div></div>
+    <div id="ammo-section">
+      <div id="ammo-label">MUNICIÓN 🔴</div>
+      <div id="ammo-num">2</div>
+      <div id="ammo-reserve">/ <span id="sRes">40</span></div>
+    </div>
+  </div>
+</div>
+
+<div id="dmg-overlay"></div>
+<div id="flash"></div>
+
+<div id="death-screen">
+  <h2>☠ YOU DIED ☠</h2>
+  <p class="stat-line">PUNTUACIÓN: <span id="death-score">0</span></p>
+  <p class="stat-line">BAJAS: <span id="death-kills">0</span></p>
+  <p class="stat-line">PRECISIÓN: <span id="death-acc">—</span></p>
+  <button class="end-btn" id="respawnBtn">[ VOLVER AL INFIERNO ]</button>
+</div>
+<div id="victory-screen">
+  <h2>🔥 TOWER CONQUERED 🔥</h2>
+  <p style="color:#884400;font-family:'Oswald',sans-serif;letter-spacing:4px;font-size:12px;margin-bottom:16px">ARCH-VILE DESTRUIDO — MISIÓN CUMPLIDA</p>
+  <p class="stat-line">PUNTUACIÓN: <span id="vic-score">0</span></p>
+  <p class="stat-line">BAJAS: <span id="vic-kills">0</span></p>
+  <p class="stat-line">PRECISIÓN: <span id="vic-acc">—</span></p>
+  <button class="end-btn" id="playAgainBtn">[ JUGAR DE NUEVO ]</button>
+</div>
+
+<div id="lock-notice">Clic para capturar ratón · ESC para liberar</div>
+
+<!-- THREE.js + GLTFLoader -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ─────────────────────────────────────────────────────────────────
+//  INLINE GLTFLoader (r128 compatible, no import needed)
+// ─────────────────────────────────────────────────────────────────
+// We'll use a procedural humanoid mesh system with skeletal animation
+// (GLB loading from URL requires CORS-friendly hosting; instead we
+//  build realistic animated humanoids procedurally using SkinnedMesh)
+
+// ─────────────────────────────────────────────────────────────────
+//  RENDERER
+// ─────────────────────────────────────────────────────────────────
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+renderer.domElement.style.cssText='position:fixed;inset:0;z-index:1;';
+window.addEventListener('resize',()=>{
+  renderer.setSize(innerWidth,innerHeight);
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+});
+
+// ─────────────────────────────────────────────────────────────────
+//  SCENE
+// ─────────────────────────────────────────────────────────────────
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x150300);
+scene.fog=new THREE.FogExp2(0x150300,0.006);
+const camera=new THREE.PerspectiveCamera(85,innerWidth/innerHeight,0.05,600);
+camera.position.set(0,1.7,5);
+camera.rotation.order='YXZ';
+
+const sunLight=new THREE.DirectionalLight(0xff4400,1.5);
+sunLight.position.set(40,80,30);sunLight.castShadow=true;
+sunLight.shadow.mapSize.set(2048,2048);
+sunLight.shadow.camera.near=1;sunLight.shadow.camera.far=300;
+sunLight.shadow.camera.left=sunLight.shadow.camera.bottom=-150;
+sunLight.shadow.camera.right=sunLight.shadow.camera.top=150;
+scene.add(sunLight);
+scene.add(new THREE.AmbientLight(0x3a0808,0.9));
+const lavaLight=new THREE.PointLight(0xff2200,2.5,80);
+lavaLight.position.set(0,-5,20);scene.add(lavaLight);
+const fireLights=[];
+for(let i=0;i<4;i++){
+  const fl=new THREE.PointLight(0xff4400,1.2,25);
+  fl.position.set((Math.random()-.5)*60,1,(Math.random()-.5)*60+15);
+  scene.add(fl);fireLights.push({light:fl,bi:1.2+Math.random()*.5,t:Math.random()*100});
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  SKELETAL HUMANOID MODEL BUILDER
+//  Creates a rigged, animated humanoid using SkinnedMesh + Bones
+// ─────────────────────────────────────────────────────────────────
+function buildHumanoid(cfg){
+  // cfg: { bodyColor, headColor, scale, isBoss, eyeColor }
+  const s=cfg.scale||1;
+  const group=new THREE.Group();
+  const mixers=[];
+  const bones={};
+
+  // Material
+  const bodyMat=new THREE.MeshLambertMaterial({color:cfg.bodyColor,skinning:true});
+  const headMat=new THREE.MeshLambertMaterial({color:cfg.headColor,skinning:true});
+
+  // ── Skeleton ──────────────────────────────────────
+  // Hip (root) → Spine → Chest → Neck → Head
+  //                             → L_Shoulder → L_Elbow → L_Hand
+  //                             → R_Shoulder → R_Elbow → R_Hand
+  //          → L_Hip → L_Knee → L_Foot
+  //          → R_Hip → R_Knee → R_Foot
+
+  function bone(name, px, py, pz){
+    const b=new THREE.Bone();b.name=name;b.position.set(px*s,py*s,pz*s);bones[name]=b;return b;
+  }
+
+  const root    = bone('hip',    0,0,0);
+  const spine   = bone('spine',  0,.55,0);
+  const chest   = bone('chest',  0,.45,0);
+  const neck    = bone('neck',   0,.45,0);
+  const head    = bone('head',   0,.22,0);
+  const lShoulder=bone('lShoulder', .4,.05,0);
+  const lElbow   =bone('lElbow',   .35,0,0);
+  const lHand    =bone('lHand',    .28,0,0);
+  const rShoulder=bone('rShoulder',-.4,.05,0);
+  const rElbow   =bone('rElbow',  -.35,0,0);
+  const rHand    =bone('rHand',   -.28,0,0);
+  const lHip    = bone('lHip',   .18,0,0);
+  const lKnee   = bone('lKnee',  0,-.42,0);
+  const lFoot   = bone('lFoot',  0,-.4,0);
+  const rHip    = bone('rHip',   -.18,0,0);
+  const rKnee   = bone('rKnee',  0,-.42,0);
+  const rFoot   = bone('rFoot',  0,-.4,0);
+
+  root.add(spine);
+  spine.add(chest);
+  chest.add(neck);neck.add(head);
+  chest.add(lShoulder);lShoulder.add(lElbow);lElbow.add(lHand);
+  chest.add(rShoulder);rShoulder.add(rElbow);rElbow.add(rHand);
+  root.add(lHip);lHip.add(lKnee);lKnee.add(lFoot);
+  root.add(rHip);rHip.add(rKnee);rKnee.add(rFoot);
+
+  const skeleton=new THREE.Skeleton([
+    root,spine,chest,neck,head,
+    lShoulder,lElbow,lHand,
+    rShoulder,rElbow,rHand,
+    lHip,lKnee,lFoot,
+    rHip,rKnee,rFoot
+  ]);
+
+  // ── Skinned meshes ────────────────────────────────
+  function skinnedBox(w,h,d,boneIndices,weights,mat){
+    const geo=new THREE.BoxBufferGeometry(w*s,h*s,d*s);
+    const vCount=geo.attributes.position.count;
+    const indices=new Float32Array(vCount*4).fill(0);
+    const wts=new Float32Array(vCount*4).fill(0);
+    for(let i=0;i<vCount;i++){
+      indices[i*4]=boneIndices[0]||0;
+      indices[i*4+1]=boneIndices[1]||0;
+      wts[i*4]=weights[0]||1;
+      wts[i*4+1]=weights[1]||0;
+    }
+    geo.setAttribute('skinIndex',new THREE.Uint16BufferAttribute(indices,4));
+    geo.setAttribute('skinWeight',new THREE.Float32BufferAttribute(wts,4));
+    const mesh=new THREE.SkinnedMesh(geo,mat);
+    mesh.castShadow=true;
+    return mesh;
+  }
+
+  // Build root mesh (torso drives the whole thing)
+  const torsoMesh=skinnedBox(.6,.55,.35,[2,1],[.7,.3],bodyMat);
+  torsoMesh.add(root);root.position.set(0,-.55*s/2,0);
+  torsoMesh.bind(skeleton);
+  torsoMesh.position.y=(0.55*s/2);
+
+  // Head mesh
+  const headSize=cfg.isBoss?s*.65:s*.38;
+  const headGeo=new THREE.BoxBufferGeometry(headSize*1.2,headSize,headSize);
+  const hVcount=headGeo.attributes.position.count;
+  const hi=new Float32Array(hVcount*4).fill(0);
+  const hw=new Float32Array(hVcount*4).fill(0);
+  for(let i=0;i<hVcount;i++){hi[i*4]=4;hw[i*4]=1;}
+  headGeo.setAttribute('skinIndex',new THREE.Uint16BufferAttribute(hi,4));
+  headGeo.setAttribute('skinWeight',new THREE.Float32BufferAttribute(hw,4));
+  const headMesh=new THREE.SkinnedMesh(headGeo,headMat);
+  headMesh.castShadow=true;
+  headMesh.bind(skeleton,torsoMesh.bindMatrix);
+  headMesh.position.y=(0.55*s/2);
+
+  // Glowing eyes
+  const eyeColor=cfg.eyeColor||0xff0000;
+  const eyeMat=new THREE.MeshBasicMaterial({color:eyeColor});
+  const eyeGeo=new THREE.SphereGeometry(.07*s,5,5);
+  for(const ex of[-1,1]){
+    const eye=new THREE.Mesh(eyeGeo,eyeMat);
+    // Position relative to head bone world-space (approx)
+    eye.position.set(ex*.12*s,0,-.2*s);
+    head.add(eye);
+    const eg=new THREE.PointLight(eyeColor,cfg.isBoss?2:.7,cfg.isBoss?6:2.5);
+    eg.position.copy(eye.position);head.add(eg);
+  }
+
+  // Boss horns
+  if(cfg.isBoss){
+    for(const hx of[-1,1]){
+      const horn=new THREE.Mesh(new THREE.ConeGeometry(.12*s,1.2*s,4),new THREE.MeshLambertMaterial({color:0x0a0000}));
+      horn.position.set(hx*.35*s,.6*s,0);horn.rotation.z=hx*.3;
+      head.add(horn);
+    }
+    // Extra shoulder spikes
+    for(const sx of[-1,1]){
+      const spike=new THREE.Mesh(new THREE.ConeGeometry(.12*s,.8*s,4),new THREE.MeshLambertMaterial({color:0x0a0000}));
+      spike.position.set(sx*.5*s,.3*s,0);spike.rotation.z=sx*1.2;
+      chest.add(spike);
+    }
+  }
+
+  group.add(torsoMesh);
+  group.add(headMesh);
+  group.castShadow=true;
+
+  // ── ANIMATION CLIPS ──────────────────────────────
+  // Walk cycle using keyframe tracks on bones
+  const fps=24;
+  function makeWalkClip(){
+    const dur=0.8;
+    const tracks=[];
+    // Left leg swing
+    tracks.push(new THREE.QuaternionKeyframeTrack('lHip.quaternion',
+      [0,dur*.25,dur*.5,dur*.75,dur],
+      [0,0,0,1, 0,.2,0,.98, 0,-.2,0,.98, 0,.2,0,.98, 0,0,0,1].map((v,i)=>v*(i%4===3?1:1))
+    ));
+    tracks.push(new THREE.QuaternionKeyframeTrack('rHip.quaternion',
+      [0,dur*.25,dur*.5,dur*.75,dur],
+      [0,-.2,0,.98, 0,0,0,1, 0,.2,0,.98, 0,0,0,1, 0,-.2,0,.98].map(v=>v)
+    ));
+    // Arm swing (opposite to legs)
+    tracks.push(new THREE.QuaternionKeyframeTrack('lShoulder.quaternion',
+      [0,dur*.5,dur],[0,-.15,0,.99, 0,.15,0,.99, 0,-.15,0,.99]
+    ));
+    tracks.push(new THREE.QuaternionKeyframeTrack('rShoulder.quaternion',
+      [0,dur*.5,dur],[0,.15,0,.99, 0,-.15,0,.99, 0,.15,0,.99]
+    ));
+    // Spine subtle sway
+    tracks.push(new THREE.QuaternionKeyframeTrack('spine.quaternion',
+      [0,dur*.5,dur],[0,.04,0,.999, 0,-.04,0,.999, 0,.04,0,.999]
+    ));
+    return new THREE.AnimationClip('walk',dur,tracks);
+  }
+
+  function makeIdleClip(){
+    const dur=2.5;
+    const tracks=[];
+    tracks.push(new THREE.QuaternionKeyframeTrack('spine.quaternion',
+      [0,dur*.5,dur],[0,.02,0,.9998, 0,-.02,0,.9998, 0,.02,0,.9998]
+    ));
+    tracks.push(new THREE.QuaternionKeyframeTrack('head.quaternion',
+      [0,dur*.33,dur*.66,dur],[0,.04,0,.999, 0,-.04,0,.999, 0,.02,0,.999, 0,.04,0,.999]
+    ));
+    return new THREE.AnimationClip('idle',dur,tracks);
+  }
+
+  function makeAttackClip(){
+    const dur=0.5;
+    const tracks=[];
+    // Both arms lunge forward
+    tracks.push(new THREE.QuaternionKeyframeTrack('lShoulder.quaternion',
+      [0,dur*.3,dur],[0,0,0,1, .5,0,0,.866, 0,0,0,1]
+    ));
+    tracks.push(new THREE.QuaternionKeyframeTrack('rShoulder.quaternion',
+      [0,dur*.3,dur],[0,0,0,1, .5,0,0,.866, 0,0,0,1]
+    ));
+    tracks.push(new THREE.QuaternionKeyframeTrack('spine.quaternion',
+      [0,dur*.3,dur],[0,0,0,1, .2,0,0,.98, 0,0,0,1]
+    ));
+    return new THREE.AnimationClip('attack',dur,tracks);
+  }
+
+  function makeDeathClip(){
+    const dur=1.0;
+    const tracks=[];
+    tracks.push(new THREE.QuaternionKeyframeTrack('hip.quaternion',
+      [0,dur*.5,dur],[0,0,0,1, .5,0,0,.866, .707,0,0,.707]
+    ));
+    tracks.push(new THREE.VectorKeyframeTrack('hip.position',
+      [0,dur],[0,0,0, 0,-.5*s,0]
+    ));
+    return new THREE.AnimationClip('death',dur,tracks);
+  }
+
+  const mixer=new THREE.AnimationMixer(torsoMesh);
+  const clips={
+    walk:   mixer.clipAction(makeWalkClip()),
+    idle:   mixer.clipAction(makeIdleClip()),
+    attack: mixer.clipAction(makeAttackClip()),
+    death:  mixer.clipAction(makeDeathClip()),
+  };
+  clips.idle.play();
+  clips.death.setLoop(THREE.LoopOnce,1);
+  clips.death.clampWhenFinished=true;
+  clips.attack.setLoop(THREE.LoopOnce,1);
+  clips.attack.clampWhenFinished=true;
+
+  // Expose bone for raycasting head detection
+  // We'll add a visible head indicator mesh to group
+  const headHitbox=new THREE.Mesh(
+    new THREE.SphereGeometry(.22*s,6,6),
+    new THREE.MeshBasicMaterial({visible:false})
+  );
+  headHitbox.userData.isHead=true;
+  group.add(headHitbox);
+
+  return {group,torsoMesh,headMesh,headHitbox,mixer,clips,bones,skeleton,head};
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  TOWER CONSTANTS
+// ─────────────────────────────────────────────────────────────────
+const TOWER_X=0,TOWER_Z=0;
+const TOWER_OUTER=16;
+const FLOOR_HEIGHT=5.5;
+const NUM_FLOORS=4;
+const TOTAL_FLOORS=NUM_FLOORS+1;
+
+// ─────────────────────────────────────────────────────────────────
+//  HELL WORLD
+// ─────────────────────────────────────────────────────────────────
+function buildHellWorld(){
+  const geo=new THREE.PlaneGeometry(500,500,60,60);
+  const v=geo.attributes.position;
+  for(let i=0;i<v.count;i++){
+    const x=v.getX(i),y=v.getY(i),d=Math.sqrt(x*x+y*y);
+    if(d>TOWER_OUTER+3) v.setZ(i,Math.sin(x*.1)*Math.cos(y*.1)*1.5+Math.sin(x*.3)*.4);
+  }
+  geo.computeVertexNormals();
+  const ground=new THREE.Mesh(geo,new THREE.MeshLambertMaterial({color:0x3a1a0a}));
+  ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
+  for(let i=0;i<12;i++){
+    const lw=5+Math.random()*12,ld=3+Math.random()*8;
+    const lava=new THREE.Mesh(new THREE.PlaneGeometry(lw,ld),new THREE.MeshBasicMaterial({color:0xff3300,transparent:true,opacity:.85}));
+    lava.rotation.x=-Math.PI/2;lava.position.set((Math.random()-.5)*80,.02,20+Math.random()*70);scene.add(lava);
+  }
+  function addPillar(x,z){
+    const h=4+Math.random()*10;
+    const p=new THREE.Mesh(new THREE.CylinderGeometry(Math.random()*.5+.3,Math.random()*.8+.5,h,5),new THREE.MeshLambertMaterial({color:0x2a1008}));
+    p.position.set(x,h/2,z);p.castShadow=true;scene.add(p);
+    const tip=new THREE.Mesh(new THREE.SphereGeometry(.25,6,6),new THREE.MeshBasicMaterial({color:0xff2200,transparent:true,opacity:.5}));
+    tip.position.set(x,h+.1,z);scene.add(tip);
+  }
+  for(let i=0;i<40;i++){const a=(i/40)*Math.PI*2,r=50+Math.random()*70;addPillar(Math.cos(a)*r,Math.sin(a)*r);}
+  for(let i=0;i<20;i++){const a=Math.random()*Math.PI*2,r=22+Math.random()*20;addPillar(Math.cos(a)*r+25,Math.sin(a)*r+30);}
+  for(let i=0;i<50;i++){
+    const rock=new THREE.Mesh(new THREE.DodecahedronGeometry(Math.random()*2+.3,0),new THREE.MeshLambertMaterial({color:i%3===0?0x4a1505:0x2a0d04}));
+    rock.position.set((Math.random()-.5)*120,.3,8+Math.random()*100);rock.rotation.set(Math.random()*3,Math.random()*3,Math.random()*3);rock.castShadow=true;scene.add(rock);
+  }
+  function hellBox(w,h,d,x,z){
+    const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshLambertMaterial({color:0x1a0804}));
+    m.position.set(x,h/2,z);m.castShadow=true;m.receiveShadow=true;scene.add(m);
+    for(let i=0;i<2;i++){
+      const win=new THREE.Mesh(new THREE.PlaneGeometry(1,1.2),new THREE.MeshBasicMaterial({color:0xff2200,transparent:true,opacity:.7}));
+      win.position.set(x+(i-.5)*2.5,h*.6,z-d/2-.01);scene.add(win);
+    }
+  }
+  hellBox(9,6,9,30,35);hellBox(13,4,7,-30,45);hellBox(7,10,7,10,60);hellBox(11,5,11,-15,25);hellBox(6,4,6,42,50);
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  BUILD TOWER
+// ─────────────────────────────────────────────────────────────────
+const towerDoors=[];
+const stairObjects=[];
+
+function buildTower(){
+  const wallMat=new THREE.MeshLambertMaterial({color:0x150808});
+  const floorMat=new THREE.MeshLambertMaterial({color:0x1a0d06});
+  const W=TOWER_OUTER,thick=1.2;
+  // Walls per floor
+  const sides=[
+    {w:W,d:thick,x:0,z:-W/2},{w:W,d:thick,x:0,z:W/2},
+    {w:thick,d:W,x:-W/2,z:0},{w:thick,d:W,x:W/2,z:0}
+  ];
+  for(const s of sides){
+    for(let f=0;f<TOTAL_FLOORS;f++){
+      const wh=FLOOR_HEIGHT-0.3;
+      const wall=new THREE.Mesh(new THREE.BoxGeometry(s.w,wh,s.d),wallMat);
+      wall.position.set(TOWER_X+s.x,f*FLOOR_HEIGHT+wh/2,TOWER_Z+s.z);
+      wall.castShadow=true;wall.receiveShadow=true;scene.add(wall);
+    }
+  }
+  // Floor slabs
+  for(let f=0;f<=TOTAL_FLOORS;f++){
+    const slab=new THREE.Mesh(new THREE.BoxGeometry(W,.3,W),floorMat);
+    slab.position.set(TOWER_X,f*FLOOR_HEIGHT-.15,TOWER_Z);slab.receiveShadow=true;scene.add(slab);
+  }
+  // Roof + spires
+  const roof=new THREE.Mesh(new THREE.BoxGeometry(W+2,.5,W+2),wallMat);
+  roof.position.set(TOWER_X,TOTAL_FLOORS*FLOOR_HEIGHT+.25,TOWER_Z);scene.add(roof);
+  for(let i=0;i<4;i++){
+    const a=i*Math.PI/2+Math.PI/4;
+    const sp=new THREE.Mesh(new THREE.ConeGeometry(.6,5,4),new THREE.MeshLambertMaterial({color:0x0a0404}));
+    sp.position.set(TOWER_X+Math.cos(a)*(W/2-.5),TOTAL_FLOORS*FLOOR_HEIGHT+2.5,TOWER_Z+Math.sin(a)*(W/2-.5));scene.add(sp);
+  }
+  // Glow strips
+  for(let f=0;f<TOTAL_FLOORS;f++){
+    const strip=new THREE.Mesh(new THREE.BoxGeometry(W+.1,.12,W+.1),new THREE.MeshBasicMaterial({color:0xff2200,transparent:true,opacity:.6}));
+    strip.position.set(TOWER_X,f*FLOOR_HEIGHT,TOWER_Z);scene.add(strip);
+    // Per-floor light
+    const pl=new THREE.PointLight(f===NUM_FLOORS?0xaa0033:0xff1100,1.8,TOWER_OUTER*1.2);
+    pl.position.set(TOWER_X,f*FLOOR_HEIGHT+2.5,TOWER_Z);scene.add(pl);
+  }
+  // Entrance glow
+  const arch=new THREE.Mesh(new THREE.BoxGeometry(2.8,3.5,thick+.1),new THREE.MeshBasicMaterial({color:0xff4400,transparent:true,opacity:.3}));
+  arch.position.set(TOWER_X,1.75,TOWER_Z-W/2);scene.add(arch);
+  // Lava moat
+  const baseLava=new THREE.Mesh(new THREE.RingGeometry(W/2+.5,W/2+8,32),new THREE.MeshBasicMaterial({color:0xff2200,side:THREE.DoubleSide,transparent:true,opacity:.7}));
+  baseLava.rotation.x=-Math.PI/2;baseLava.position.set(TOWER_X,.03,TOWER_Z);scene.add(baseLava);
+  // Stairs (one per floor)
+  for(let f=0;f<TOTAL_FLOORS;f++){
+    const angle=f%2===0?0:Math.PI;
+    const sx=TOWER_X+(W/2-3)*Math.cos(angle+Math.PI/2);
+    const sz=TOWER_Z+(W/2-3)*Math.sin(angle+Math.PI/2);
+    for(let s=0;s<5;s++){
+      const step=new THREE.Mesh(new THREE.BoxGeometry(2.8,.25,1.2),new THREE.MeshLambertMaterial({color:0x220e08}));
+      step.position.set(sx,f*FLOOR_HEIGHT+s*FLOOR_HEIGHT/5+.1,sz+s*.6*(angle===0?1:-1));
+      scene.add(step);
+    }
+    stairObjects.push({x:sx,z:sz,fromFloor:f,toFloor:f+1,radius:2.5});
+  }
+  // Locked doors
+  for(let f=1;f<TOTAL_FLOORS;f++){
+    const stair=stairObjects[f-1];
+    const dm=new THREE.Mesh(new THREE.BoxGeometry(3,4,.3),new THREE.MeshBasicMaterial({color:0xff0000,transparent:true,opacity:.55}));
+    dm.position.set(stair.x,f*FLOOR_HEIGHT+2,stair.z);scene.add(dm);
+    towerDoors.push({mesh:dm,floor:f,open:false});
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  ITEM DEFINITIONS  ← FIXED: all items have needed fields
+// ─────────────────────────────────────────────────────────────────
+const ITEM_DEFS={
+  // WEAPONS
+  supershotgun:{ name:'Super Escopeta', icon:'💥', type:'weapon', ammo:2,  maxAmmo:2,  reserve:40, damage:4, zoomFov:60, zoomSens:0.0015, color:0x8b4010, isSniperClass:false },
+  chaingun:    { name:'Minigun',        icon:'🔫', type:'weapon', ammo:60, maxAmmo:60, reserve:180,damage:1, zoomFov:50, zoomSens:0.0013, color:0x888800, isSniperClass:false },
+  rocket:      { name:'Lanzacohetes',   icon:'🚀', type:'weapon', ammo:5,  maxAmmo:5,  reserve:25, damage:6, zoomFov:65, zoomSens:0.0015, color:0xcc4400, isSniperClass:false },
+  plasma:      { name:'Rifle Plasma',   icon:'⚡', type:'weapon', ammo:40, maxAmmo:40, reserve:120,damage:2, zoomFov:55, zoomSens:0.0013, color:0x0044ff, isSniperClass:false },
+  sniper:      { name:'Francotirador',  icon:'🎯', type:'weapon', ammo:5,  maxAmmo:5,  reserve:30, damage:6, zoomFov:12, zoomSens:0.0004, color:0x44aa44, isSniperClass:true,  sniperScope:true },
+  railgun:     { name:'Railgun',        icon:'🔵', type:'weapon', ammo:3,  maxAmmo:3,  reserve:12, damage:10,zoomFov:18, zoomSens:0.0005, color:0x0088ff, isSniperClass:true,  sniperScope:true },
+  // POTIONS — FIXED: all have type:'potion', effect, value
+  soulshpere:  { name:'Esfera Alma', icon:'💙', type:'potion', color:0x0088ff, effect:'heal',  value:100, desc:'+100 HP' },
+  medkit:      { name:'Botiquín',    icon:'❤️', type:'potion', color:0xff3333, effect:'heal',  value:30,  desc:'+30 HP'  },
+  armor:       { name:'Chaleco',     icon:'🛡️', type:'potion', color:0x00aa00, effect:'armor', value:100, desc:'+100 Armadura' },
+  megaarmor:   { name:'Mega Armor',  icon:'🔵', type:'potion', color:0x0044ff, effect:'armor', value:200, desc:'+200 Armadura' },
+  // POWERUPS
+  berserk:     { name:'Berserk',      icon:'🟥', type:'powerup', color:0xff0000, effect:'speed',    duration:30, desc:'Daño x3' },
+  invis:       { name:'Espectro',     icon:'👻', type:'powerup', color:0xccccff, effect:'invis',    duration:15, desc:'Invisibilidad' },
+  regen:       { name:'Regeneración', icon:'💚', type:'powerup', color:0x00ff44, effect:'regen',    duration:25, desc:'+3HP/s' },
+  ammopack:    { name:'Munición',     icon:'📦', type:'powerup', color:0xffaa00, effect:'ammopack', duration:0,  desc:'Recarga' },
+  invincible:  { name:'Invulnerable', icon:'⭐', type:'powerup', color:0xffff00, effect:'invincible',duration:20, desc:'Sin daño' },
+};
+
+// ─────────────────────────────────────────────────────────────────
+//  TOWER STATE
+// ─────────────────────────────────────────────────────────────────
+const TOWER={
+  active:false, currentFloor:0,
+  floorEnemies:[], floorCleared:[],
+  bossAlive:false, boss:null,
+  waves:[
+    ['imp','imp','imp','pinky'],
+    ['imp','imp','pinky','pinky','cacodemon'],
+    ['imp','cacodemon','cacodemon','hellknight','pinky','imp'],
+    ['hellknight','hellknight','cacodemon','cacodemon','pinky','imp','imp'],
+  ],
+};
+for(let i=0;i<=TOTAL_FLOORS;i++) TOWER.floorCleared.push(false);
+
+// ─────────────────────────────────────────────────────────────────
+//  GAME STATE
+// ─────────────────────────────────────────────────────────────────
+const G={
+  running:false, pointerLocked:false,
+  yaw:0, pitch:0, keys:{},
+  hp:100, maxHp:100, armor:0, maxArmor:200,
+  velY:0, onGround:true,
+  crouching:false, eyeHeight:1.7, crouchHeight:0.9,
+  invincible:false,
+  currentWeapon:'supershotgun',
+  ammo:2, maxAmmo:2, reserve:40, reloading:false,
+  zoomed:false, fovTarget:85, breathT:0,
+  shots:0, hits:0, kills:0, score:0,
+  inventory:Array(9).fill(null), selectedSlot:0,
+  effects:{},
+  worldItems:[], enemies:[], particles:[],
+  mixers:[], // all AnimationMixers
+  fireT:0,
+};
+G.inventory[0]={id:'supershotgun',count:1};
+
+// ─────────────────────────────────────────────────────────────────
+//  DEMON DEFINITIONS
+// ─────────────────────────────────────────────────────────────────
+const DEMON_DEFS={
+  imp:       {name:'Imp',         bodyColor:0x8b3010,headColor:0xaa5030,eyeColor:0xff2200,hp:3, speed:1.6,damage:10,scale:1.0,attackRange:2.0,attackCd:1.6},
+  pinky:     {name:'Pinky',       bodyColor:0xcc3020,headColor:0xff5040,eyeColor:0xff0000,hp:7, speed:1.0,damage:20,scale:1.4,attackRange:2.5,attackCd:1.4},
+  cacodemon: {name:'Cacodemon',   bodyColor:0x8800cc,headColor:0xaa00ff,eyeColor:0x00ffff,hp:9, speed:0.9,damage:15,scale:1.2,attackRange:2.2,attackCd:1.2},
+  hellknight:{name:'Hellknight',  bodyColor:0x1a0a0a,headColor:0xcc4400,eyeColor:0xff6600,hp:15,speed:0.9,damage:28,scale:1.6,attackRange:2.8,attackCd:2.0},
+};
+
+function spawnDemon(dtype, pos, isTower, floorIdx){
+  const def=DEMON_DEFS[dtype];
+  const rig=buildHumanoid({
+    bodyColor:def.bodyColor, headColor:def.headColor,
+    eyeColor:def.eyeColor, scale:def.scale
+  });
+  rig.group.position.copy(pos);
+  rig.group.castShadow=true;
+  scene.add(rig.group);
+  G.mixers.push(rig.mixer);
+
+  const e={
+    rig, group:rig.group, headHitbox:rig.headHitbox,
+    alive:true, dying:false,
+    hp:def.hp*(isTower?1.4:1)|0, maxHp:def.hp*(isTower?1.4:1)|0,
+    speed:def.speed*(isTower?.75:1),
+    bobT:Math.random()*Math.PI*2, attackCooldown:Math.random()*2,
+    attackRange:def.attackRange, damage:def.damage,
+    dtype, name:def.name,
+    isTower:!!isTower, floorIdx:floorIdx||0,
+    state:'idle', // idle | walk | attack | die
+    lastAnim:'idle',
+  };
+  G.enemies.push(e);
+  if(isTower) TOWER.floorEnemies.push(e);
+  return e;
+}
+
+function spawnBoss(){
+  const floorIdx=NUM_FLOORS;
+  const rig=buildHumanoid({
+    bodyColor:0x330000, headColor:0x220000,
+    eyeColor:0xff0000, scale:2.2, isBoss:true
+  });
+  const pos=new THREE.Vector3(TOWER_X,floorIdx*FLOOR_HEIGHT+.5,TOWER_Z);
+  rig.group.position.copy(pos);
+  scene.add(rig.group);
+  G.mixers.push(rig.mixer);
+
+  const boss={
+    rig, group:rig.group, headHitbox:rig.headHitbox,
+    alive:true, dying:false,
+    hp:220, maxHp:220,
+    speed:.55, bobT:0, attackCooldown:1.5,
+    attackRange:4.5, damage:35,
+    dtype:{name:'Arch-Vile'}, name:'ARCH-VILE',
+    isTower:true, isBoss:true, floorIdx,
+    state:'idle', lastAnim:'idle', phase:1,
+  };
+  G.enemies.push(boss);
+  TOWER.floorEnemies.push(boss);
+  TOWER.bossAlive=true;
+  TOWER.boss=boss;
+  updateBossHUD(1,boss.hp,boss.maxHp);
+  showTowerMsg('☠ ARCH-VILE — SEÑOR DEL INFIERNO ☠<br><span style="font-size:13px;letter-spacing:3px;color:#ff6600">EL FINAL HA LLEGADO</span>',5000);
+}
+
+function spawnFieldDemon(){
+  const types=Object.keys(DEMON_DEFS);
+  const dtype=types[Math.floor(Math.random()*types.length)];
+  const a=Math.random()*Math.PI*2,dist=28+Math.random()*50;
+  const pos=new THREE.Vector3(Math.cos(a)*dist,0,Math.sin(a)*dist+18);
+  spawnDemon(dtype,pos,false,0);
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  HUD
+// ─────────────────────────────────────────────────────────────────
+function updateFace(){
+  const el=document.getElementById('face-emoji');
+  if(G._painFace){el.textContent='😖';el.style.filter='drop-shadow(0 0 12px #ff0000)';return;}
+  if(G.hp>75)el.textContent='😐';else if(G.hp>50)el.textContent='😤';
+  else if(G.hp>25)el.textContent='😣';else if(G.hp>0)el.textContent='😨';
+  else el.textContent='💀';
+  el.style.filter='drop-shadow(0 0 8px #ff2200)';
+}
+function updateHealthHUD(){
+  const pct=Math.max(0,G.hp/G.maxHp);
+  document.getElementById('hp-num').textContent=Math.ceil(G.hp);
+  document.getElementById('hp-fill').style.width=(pct*100)+'%';
+  document.getElementById('hp-fill').style.background=pct>.5?'linear-gradient(90deg,#aa2200,#ff4400)':pct>.25?'linear-gradient(90deg,#ff6600,#ffaa00)':'linear-gradient(90deg,#ff0000,#ff4400)';
+  document.getElementById('arm-num').textContent=Math.ceil(G.armor);
+  updateFace();
+}
+function hudAmmo(){
+  document.getElementById('ammo-num').textContent=G.ammo;
+  document.getElementById('sRes').textContent=G.reserve;
+  updateInventoryHUD();
+}
+function hudStats(){
+  document.getElementById('sScore').textContent=G.score;
+  document.getElementById('sKills').textContent=G.kills;
+  document.getElementById('sAcc').textContent=G.shots>0?Math.round(G.hits/G.shots*100)+'%':'—';
+}
+function updateTowerHUD(){
+  if(!TOWER.active){document.getElementById('tower-hud').style.display='none';document.getElementById('tower-lock-overlay').classList.remove('locked');return;}
+  document.getElementById('tower-hud').style.display='block';
+  const floorName=TOWER.currentFloor>NUM_FLOORS?'BOSS':TOWER.currentFloor+' / '+NUM_FLOORS;
+  document.getElementById('tower-floor-val').textContent=floorName;
+  const alive=TOWER.floorEnemies.filter(e=>e.alive).length;
+  document.getElementById('tower-enemies-val').textContent=alive>0?alive:'✓ LIMPIO';
+  document.getElementById('tower-lock-overlay').classList.toggle('locked',alive>0);
+}
+function updateBossHUD(pct,hp,maxHp){
+  document.getElementById('boss-hud').style.display=TOWER.bossAlive?'block':'none';
+  document.getElementById('boss-fill').style.width=(pct*100)+'%';
+  if(hp!==undefined) document.getElementById('boss-hp-text').textContent=`${Math.ceil(hp)} / ${maxHp}`;
+}
+function showMsg(txt,col,dur){
+  const el=document.getElementById('msg');el.textContent=txt;el.style.color=col;el.style.opacity='1';
+  clearTimeout(el._t);el._t=setTimeout(()=>el.style.opacity='0',dur);
+}
+function showTowerMsg(txt,dur=3000){
+  const el=document.getElementById('tower-msg');el.innerHTML=txt;el.style.opacity='1';
+  clearTimeout(el._t);el._t=setTimeout(()=>el.style.opacity='0',dur);
+}
+function showPickup(txt){
+  const el=document.getElementById('pickup-notice');el.textContent=txt;el.style.opacity='1';
+  clearTimeout(el._pt);el._pt=setTimeout(()=>el.style.opacity='0',2500);
+}
+function killfeed(name){
+  const msgs=['ELIMINADO','DESTRUIDO','DESTRIPADO','DEMONIZADO'];
+  const kf=document.getElementById('killfeed');
+  const d=document.createElement('div');
+  d.textContent='☠ '+name+': '+msgs[Math.floor(Math.random()*msgs.length)];
+  kf.appendChild(d);setTimeout(()=>d.remove(),2800);
+}
+function flashScreen(){
+  const f=document.getElementById('flash');
+  f.style.opacity='0.22';f.style.transition='opacity 0.04s';
+  setTimeout(()=>{f.style.transition='opacity 0.08s';f.style.opacity='0';},55);
+}
+function damageFlash(){
+  document.getElementById('dmg-overlay').style.background='rgba(200,0,0,0.4)';
+  G._painFace=true;updateFace();
+  setTimeout(()=>{document.getElementById('dmg-overlay').style.background='rgba(200,0,0,0)';G._painFace=false;updateFace();},260);
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  INVENTORY  ← FIXED: slot CSS class logic, no isSniperClass crash
+// ─────────────────────────────────────────────────────────────────
+function buildInventoryHUD(){
+  const inv=document.getElementById('inventory');inv.innerHTML='';
+  for(let i=0;i<9;i++){
+    const slot=document.createElement('div');slot.className='inv-slot';slot.id=`slot-${i}`;
+    slot.innerHTML=`<div class="slot-num">${i+1}</div><div class="slot-icon"></div><div class="slot-name"></div><div class="slot-count"></div>`;
+    inv.appendChild(slot);
+  }
+  updateInventoryHUD();
+}
+function updateInventoryHUD(){
+  for(let i=0;i<9;i++){
+    const slot=document.getElementById(`slot-${i}`);
+    if(!slot) continue;
+    const item=G.inventory[i];
+    // Reset classes
+    slot.className='inv-slot'+(i===G.selectedSlot?' selected':'');
+    if(item){
+      const def=ITEM_DEFS[item.id];
+      if(!def) continue;
+      // FIX: safe class assignment
+      if(def.type==='weapon'){
+        slot.classList.add(def.isSniperClass?'sniper-type':'weapon');
+      } else {
+        slot.classList.add(def.type); // 'potion' or 'powerup'
+      }
+      slot.querySelector('.slot-icon').textContent=def.icon||'?';
+      slot.querySelector('.slot-name').textContent=(def.name||'').substring(0,8);
+      // FIX: ammo count only shows for currently equipped weapon
+      if(def.type==='weapon' && item.id===G.currentWeapon){
+        slot.querySelector('.slot-count').textContent=`${G.ammo}/${G.reserve}`;
+      } else if(def.type!=='weapon' && item.count>1){
+        slot.querySelector('.slot-count').textContent=`x${item.count}`;
+      } else {
+        slot.querySelector('.slot-count').textContent='';
+      }
+    } else {
+      slot.querySelector('.slot-icon').textContent='';
+      slot.querySelector('.slot-name').textContent='';
+      slot.querySelector('.slot-count').textContent='';
+    }
+  }
+}
+function selectSlot(i){
+  G.selectedSlot=Math.max(0,Math.min(8,i));
+  const item=G.inventory[G.selectedSlot];
+  if(item){
+    const def=ITEM_DEFS[item.id];
+    if(def&&def.type==='weapon') equipWeapon(item.id);
+  }
+  updateInventoryHUD();
+}
+function equipWeapon(id){
+  const def=ITEM_DEFS[id];
+  if(!def) return;
+  if(G.zoomed) toggleZoom();
+  G.currentWeapon=id;
+  G.ammo=def.ammo;G.maxAmmo=def.maxAmmo;G.reserve=def.reserve;
+  G.reloading=false;
+  document.getElementById('weapon-name').textContent=def.name.toUpperCase();
+  hudAmmo();
+}
+function addToInventory(id){
+  const def=ITEM_DEFS[id];
+  if(!def) return false;
+  if(def.type==='weapon'){
+    // If already have it, add ammo
+    for(let i=0;i<9;i++){
+      if(G.inventory[i]&&G.inventory[i].id===id){
+        // Add ammo to reserve if currently equipped, else just note it
+        if(G.currentWeapon===id) G.reserve=Math.min(G.reserve+def.reserve,def.reserve*3);
+        else G.inventory[i].extraAmmo=(G.inventory[i].extraAmmo||0)+1;
+        updateInventoryHUD();return true;
+      }
+    }
+  } else {
+    // Stack same potions/powerups
+    for(let i=0;i<9;i++){
+      if(G.inventory[i]&&G.inventory[i].id===id){
+        G.inventory[i].count++;updateInventoryHUD();return true;
+      }
+    }
+  }
+  // Find empty slot
+  for(let i=0;i<9;i++){
+    if(!G.inventory[i]){G.inventory[i]={id,count:1};updateInventoryHUD();return true;}
+  }
+  return false;
+}
+
+// ── USE ITEM ── FIXED: potions now correctly call applyEffect
+function useSelectedItem(){
+  const item=G.inventory[G.selectedSlot];
+  if(!item) return;
+  const def=ITEM_DEFS[item.id];
+  if(!def) return;
+
+  if(def.type==='weapon'){
+    equipWeapon(item.id);
+    showMsg('⚔ '+def.name.toUpperCase(),'#ffaa44',700);
+    return;
+  }
+
+  if(def.type==='potion'){
+    // FIX: directly apply effect and consume one count
+    applyEffect(def);
+    item.count--;
+    if(item.count<=0) G.inventory[G.selectedSlot]=null;
+    updateInventoryHUD();
+    return;
+  }
+
+  // Powerups in inventory are used same way
+  if(def.type==='powerup'){
+    applyEffect(def);
+    item.count--;
+    if(item.count<=0) G.inventory[G.selectedSlot]=null;
+    updateInventoryHUD();
+  }
+}
+
+function dropSelectedItem(){
+  const item=G.inventory[G.selectedSlot];if(!item)return;
+  const def=ITEM_DEFS[item.id];if(!def)return;
+  if(def.type==='weapon'&&G.currentWeapon===item.id){showMsg('NO PUEDES TIRAR EL ARMA ACTIVA','#ff4444',800);return;}
+  const pos=new THREE.Vector3(camera.position.x+Math.sin(G.yaw)*2,camera.position.y-.5,camera.position.z-Math.cos(G.yaw)*2);
+  spawnWorldItem(item.id,pos);item.count--;if(item.count<=0)G.inventory[G.selectedSlot]=null;
+  updateInventoryHUD();showMsg('TIRADO: '+(def.icon||''),'#aa6600',600);
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  EFFECTS  ← FIXED: applyEffect checks all types correctly
+// ─────────────────────────────────────────────────────────────────
+function applyEffect(def){
+  if(!def) return;
+  const icon=def.icon||'';
+  const name=def.name||'';
+  const desc=def.desc||'';
+  showPickup(icon+' '+name.toUpperCase()+(desc?' — '+desc:''));
+
+  if(def.effect==='heal'){
+    const before=G.hp;
+    G.hp=Math.min(G.maxHp,G.hp+(def.value||30));
+    updateHealthHUD();
+    showMsg('+'+(Math.ceil(G.hp-before))+' HP','#44ff44',1000);
+  } else if(def.effect==='armor'){
+    const before=G.armor;
+    G.armor=Math.min(G.maxArmor,G.armor+(def.value||100));
+    updateHealthHUD();
+    showMsg('+'+(Math.ceil(G.armor-before))+' ARMOR','#4488ff',1000);
+  } else if(def.effect==='ammopack'){
+    const wdef=ITEM_DEFS[G.currentWeapon];
+    G.reserve=Math.min(G.reserve+(wdef?wdef.reserve:50),999);
+    hudAmmo();
+  } else if(def.effect==='invincible'){
+    G.invincible=true;
+    G.effects['invincible']={timeLeft:def.duration||20};
+  } else if(def.duration){
+    G.effects[def.effect]={timeLeft:def.duration};
+  }
+  updateEffectsHUD();
+}
+
+function updateEffects(dt){
+  for(const k of Object.keys(G.effects)){
+    G.effects[k].timeLeft-=dt;
+    if(G.effects[k].timeLeft<=0){
+      delete G.effects[k];
+      if(k==='invincible') G.invincible=false;
+    }
+  }
+  if(G.effects.regen){G.hp=Math.min(G.maxHp,G.hp+3*dt);updateHealthHUD();}
+  updateEffectsHUD();
+}
+
+function updateEffectsHUD(){
+  let html='';
+  if(G.effects.speed)      html+=`<div style="color:#ff3300">🟥 BERSERK ${Math.ceil(G.effects.speed.timeLeft)}s</div>`;
+  if(G.effects.invis)      html+=`<div style="color:#aaaaff">👻 ESPECTRO ${Math.ceil(G.effects.invis.timeLeft)}s</div>`;
+  if(G.effects.regen)      html+=`<div style="color:#00ff44">💚 REGEN ${Math.ceil(G.effects.regen.timeLeft)}s</div>`;
+  if(G.effects.invincible) html+=`<div style="color:#ffff44">⭐ INVULNERABLE ${Math.ceil(G.effects.invincible.timeLeft)}s</div>`;
+  document.getElementById('effects').innerHTML=html; // FIX: always update, not only outside tower
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  WORLD ITEMS (pickup spawns)
+// ─────────────────────────────────────────────────────────────────
+const SPAWN_LIST=['medkit','medkit','soulshpere','armor','berserk','invis','regen','ammopack','chaingun','sniper','railgun','megaarmor'];
+
+function makeItemMesh(id){
+  const def=ITEM_DEFS[id];
+  const group=new THREE.Group();
+  const geo=def.type==='weapon'?new THREE.BoxGeometry(.6,.2,1):def.type==='powerup'?new THREE.OctahedronGeometry(.32,0):new THREE.SphereGeometry(.28,8,8);
+  const mat=new THREE.MeshLambertMaterial({color:def.color,emissive:def.color,emissiveIntensity:.35});
+  group.add(new THREE.Mesh(geo,mat));
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(.38,.04,8,16),new THREE.MeshBasicMaterial({color:def.color}));
+  ring.rotation.x=Math.PI/2;group.add(ring);
+  group.add(new THREE.PointLight(def.color,.7,3.5));
+  return group;
+}
+function spawnWorldItem(id,pos){
+  if(!ITEM_DEFS[id]) return;
+  const mesh=makeItemMesh(id);mesh.position.copy(pos);scene.add(mesh);
+  G.worldItems.push({id,mesh,bobT:Math.random()*Math.PI*2,baseY:pos.y});
+}
+function spawnRandomItems(){
+  for(let i=0;i<24;i++){
+    const id=SPAWN_LIST[Math.floor(Math.random()*SPAWN_LIST.length)];
+    const a=Math.random()*Math.PI*2,r=20+Math.random()*55;
+    spawnWorldItem(id,new THREE.Vector3(Math.cos(a)*r,.5,Math.sin(a)*r+10));
+  }
+}
+
+function updateWorldItems(dt){
+  for(const wi of G.worldItems){
+    wi.bobT+=dt;
+    wi.mesh.position.y=(wi.baseY||.5)+Math.sin(wi.bobT*2)*.14;
+    wi.mesh.rotation.y+=dt*1.8;
+    const dx=camera.position.x-wi.mesh.position.x;
+    const dz=camera.position.z-wi.mesh.position.z;
+    if(Math.sqrt(dx*dx+dz*dz)<1.5){
+      const def=ITEM_DEFS[wi.id];
+      if(!def){wi.collected=true;scene.remove(wi.mesh);continue;}
+      if(def.type==='powerup'){
+        // Powerups auto-use on pickup
+        applyEffect(def);
+        scene.remove(wi.mesh);wi.collected=true;
+        setTimeout(()=>spawnWorldItem(wi.id,randomFieldPos()),25000);
+      } else {
+        // Weapons and potions go to inventory
+        const added=addToInventory(wi.id);
+        if(added){
+          showPickup((def.icon||'')+' '+def.name+' RECOGIDO');
+          scene.remove(wi.mesh);wi.collected=true;
+          setTimeout(()=>spawnWorldItem(wi.id,randomFieldPos()),30000);
+        }
+      }
+    }
+  }
+  G.worldItems=G.worldItems.filter(w=>!w.collected);
+}
+
+function randomFieldPos(){
+  const a=Math.random()*Math.PI*2,r=20+Math.random()*55;
+  return new THREE.Vector3(Math.cos(a)*r,.5,Math.sin(a)*r+10);
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  COMBAT
+// ─────────────────────────────────────────────────────────────────
+const raycaster=new THREE.Raycaster();
+
+function setEnemyAnim(e, animName){
+  if(e.lastAnim===animName||!e.rig) return;
+  const clips=e.rig.clips;
+  Object.values(clips).forEach(a=>a.fadeOut(.15));
+  if(clips[animName]){
+    clips[animName].reset().fadeIn(.15).play();
+  }
+  e.lastAnim=animName;
+}
+
+function shoot(){
+  if(G.reloading)return;
+  if(G.ammo<=0){reload();return;}
+  const wdef=ITEM_DEFS[G.currentWeapon];
+  G.ammo--;G.shots++;hudAmmo();flashScreen();
+  const recoil=wdef.isSniperClass?(G.zoomed?.002:.02):G.currentWeapon==='supershotgun'?.018:.01;
+  G.pitch-=recoil;
+  raycaster.setFromCamera(new THREE.Vector2(0,0),camera);
+  const pellets=G.currentWeapon==='supershotgun'?12:1;
+  const spread=G.currentWeapon==='supershotgun'?.1:wdef.isSniperClass&&!G.zoomed?.04:0;
+
+  for(let p=0;p<pellets;p++){
+    const dir=raycaster.ray.direction.clone();
+    if(spread>0){dir.x+=(Math.random()-.5)*spread;dir.y+=(Math.random()-.5)*spread;dir.normalize();}
+    const ray=new THREE.Raycaster(camera.position.clone(),dir);
+
+    let bestDist=999,bestEnemy=null,bestHS=false,bestPoint=null;
+    for(const e of G.enemies){
+      if(!e.alive)continue;
+      const objs=[e.group,...(e.group.children||[]),e.headHitbox].filter(Boolean);
+      const hits=ray.intersectObjects(objs,true);
+      if(hits.length>0&&hits[0].distance<bestDist){
+        bestDist=hits[0].distance;bestEnemy=e;
+        bestHS=hits[0].object===e.headHitbox||hits[0].object.userData?.isHead;
+        bestPoint=hits[0].point;
+      }
+    }
+    if(bestEnemy){
+      G.hits++;
+      const dmgMult=G.effects.speed?3:1;
+      let dmg=(bestHS?wdef.damage*3:wdef.damage)*dmgMult;
+      if(wdef.isSniperClass&&G.zoomed) dmg=wdef.damage*5;
+      bestEnemy.hp-=dmg;
+      spawnHitSpark(bestPoint);
+      setEnemyAnim(bestEnemy,'attack'); // enemy flinch reuse
+      if(bestEnemy.hp<=0) killEnemy(bestEnemy,bestHS||(wdef.isSniperClass&&G.zoomed));
+      else showMsg(wdef.isSniperClass&&G.zoomed?'· PRECISION ·':'· HIT ·','#ff4400',200);
+      if(bestEnemy.isBoss&&bestEnemy.alive) updateBossHUD(Math.max(0,bestEnemy.hp/bestEnemy.maxHp),bestEnemy.hp,bestEnemy.maxHp);
+      break; // each pellet stops at first hit
+    }
+  }
+  hudStats();
+  if(G.ammo===0) setTimeout(reload,200);
+}
+
+function killEnemy(e,hs){
+  if(e.dying) return;
+  e.alive=false;e.dying=true;
+  setEnemyAnim(e,'death');
+  // Fade and sink
+  setTimeout(()=>{
+    scene.remove(e.group);
+    // Remove mixer
+    const mi=G.mixers.indexOf(e.rig.mixer);if(mi>-1)G.mixers.splice(mi,1);
+    const ei=G.enemies.indexOf(e);if(ei>-1)G.enemies.splice(ei,1);
+    const fi=TOWER.floorEnemies.indexOf(e);if(fi>-1)TOWER.floorEnemies.splice(fi,1);
+    if(!e.isTower) spawnFieldDemon();
+    checkFloorClear();
+    updateTowerHUD();
+  },1800);
+
+  spawnBlood(e.group.position.clone().add(new THREE.Vector3(0,.8,0)));
+  G.kills++;
+  const pts=(hs?300:100)*(G.effects.invincible?2:1)*(e.isBoss?10:1);
+  G.score+=pts;
+
+  if(e.isBoss){
+    TOWER.bossAlive=false;updateBossHUD(0,0,e.maxHp);
+    showMsg('☠ ARCH-VILE DESTRUIDO','#ff8800',3000);
+  } else {
+    showMsg(hs?'⚡ HEADSHOT! RIP AND TEAR':'☠ DEMON SLAIN','#ff2200',700);
+  }
+  killfeed(e.name||'Demonio');hudStats();
+
+  if(!e.isBoss&&Math.random()<.5){
+    const drops=['medkit','ammopack','armor','soulshpere','medkit'];
+    spawnWorldItem(drops[Math.floor(Math.random()*drops.length)],e.group.position.clone().add(new THREE.Vector3(0,.5,0)));
+  }
+}
+
+function takeDamage(dmg){
+  if(G.invincible)return;
+  let rem=dmg;
+  if(G.armor>0){const abs=Math.min(G.armor,dmg*.65);G.armor-=abs;rem-=abs;}
+  G.hp-=rem;updateHealthHUD();damageFlash();
+  if(G.hp<=0){G.hp=0;updateHealthHUD();die();}
+}
+
+function die(){
+  G.running=false;
+  document.getElementById('death-score').textContent=G.score;
+  document.getElementById('death-kills').textContent=G.kills;
+  document.getElementById('death-acc').textContent=G.shots>0?Math.round(G.hits/G.shots*100)+'%':'—';
+  document.getElementById('death-screen').style.display='flex';
+  if(document.pointerLockElement)document.exitPointerLock();
+}
+function victory(){
+  G.running=false;
+  document.getElementById('vic-score').textContent=G.score;
+  document.getElementById('vic-kills').textContent=G.kills;
+  document.getElementById('vic-acc').textContent=G.shots>0?Math.round(G.hits/G.shots*100)+'%':'—';
+  document.getElementById('victory-screen').style.display='flex';
+  if(document.pointerLockElement)document.exitPointerLock();
+}
+
+function respawn(){
+  G.hp=100;G.armor=0;G.kills=0;G.score=0;G.shots=0;G.hits=0;
+  G.effects={};G.invincible=false;
+  G.inventory=Array(9).fill(null);G.inventory[0]={id:'supershotgun',count:1};
+  G.currentWeapon='supershotgun';G.ammo=2;G.maxAmmo=2;G.reserve=40;G.reloading=false;
+  G.yaw=0;G.pitch=0;G.selectedSlot=0;G.zoomed=false;
+  camera.position.set(0,1.7,5);
+  TOWER.active=false;TOWER.currentFloor=0;TOWER.bossAlive=false;TOWER.boss=null;TOWER.floorEnemies=[];
+  for(let i=0;i<=TOTAL_FLOORS;i++)TOWER.floorCleared[i]=false;
+  towerDoors.forEach(d=>{d.mesh.visible=true;d.open=false;});
+  document.getElementById('death-screen').style.display='none';
+  document.getElementById('victory-screen').style.display='none';
+  updateHealthHUD();hudAmmo();hudStats();buildInventoryHUD();updateEffectsHUD();updateTowerHUD();updateBossHUD(0);
+  document.getElementById('scope').style.display='none';
+  document.getElementById('sniper-scope').style.display='none';
+  document.getElementById('crosshair').style.display='block';
+  document.getElementById('weapon-name').textContent='SUPER ESCOPETA';
+  // Clear enemies
+  for(const e of G.enemies){scene.remove(e.group);const mi=G.mixers.indexOf(e.rig?.mixer);if(mi>-1)G.mixers.splice(mi,1);}
+  G.enemies=[];G.mixers=[];
+  for(let i=0;i<10;i++)spawnFieldDemon();
+  G.running=true;renderer.domElement.requestPointerLock();
+}
+
+function reload(){
+  if(G.reloading||G.reserve<=0||G.ammo===G.maxAmmo)return;
+  G.reloading=true;
+  const bar=document.getElementById('reloadbar'),fill=document.getElementById('reloadfill');
+  bar.style.display='block';fill.style.transition='none';fill.style.width='0';
+  const t=G.currentWeapon==='supershotgun'?2200:G.currentWeapon==='chaingun'?700:G.currentWeapon==='sniper'?2600:G.currentWeapon==='railgun'?3000:1400;
+  requestAnimationFrame(()=>{fill.style.transition=`width ${t}ms linear`;fill.style.width='100%';});
+  setTimeout(()=>{const take=Math.min(G.maxAmmo-G.ammo,G.reserve);G.ammo+=take;G.reserve-=take;G.reloading=false;bar.style.display='none';hudAmmo();},t);
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  ZOOM
+// ─────────────────────────────────────────────────────────────────
+function toggleZoom(){
+  const wdef=ITEM_DEFS[G.currentWeapon];
+  G.zoomed=!G.zoomed;
+  G.fovTarget=G.zoomed?wdef.zoomFov:85;
+  const isSniper=wdef.isSniperClass&&wdef.sniperScope;
+  document.getElementById('scope').style.display=(G.zoomed&&!isSniper)?'block':'none';
+  document.getElementById('sniper-scope').style.display=(G.zoomed&&isSniper)?'block':'none';
+  document.getElementById('crosshair').style.display=G.zoomed?'none':'block';
+  document.getElementById('zoom-label').textContent=G.zoomed?'ZOOM: '+Math.round(85/wdef.zoomFov)+'×':'ZOOM: 1×';
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  TOWER LOGIC
+// ─────────────────────────────────────────────────────────────────
+function enterTower(){
+  TOWER.active=true;TOWER.currentFloor=1;
+  spawnFloor(1);
+  showTowerMsg('⚠ ENTRADA SELLADA ⚠<br><span style="font-size:13px;color:#ffaa00;letter-spacing:3px">ELIMINA TODOS LOS DEMONIOS PARA AVANZAR</span>',4500);
+  updateTowerHUD();
+}
+function spawnFloor(floorIdx){
+  TOWER.floorEnemies=[];
+  if(floorIdx>NUM_FLOORS){spawnBoss();return;}
+  const wave=TOWER.waves[floorIdx-1]||TOWER.waves[TOWER.waves.length-1];
+  for(const dtype of wave){
+    const a=Math.random()*Math.PI*2,r=(TOWER_OUTER/2-3)*Math.random()*.7+1.5;
+    const pos=new THREE.Vector3(TOWER_X+Math.cos(a)*r,floorIdx*FLOOR_HEIGHT+.1,TOWER_Z+Math.sin(a)*r);
+    spawnDemon(dtype,pos,true,floorIdx);
+  }
+}
+function checkFloorClear(){
+  const alive=TOWER.floorEnemies.filter(e=>e.alive).length;
+  if(alive===0&&TOWER.active){
+    TOWER.floorCleared[TOWER.currentFloor]=true;
+    if(TOWER.currentFloor>NUM_FLOORS){setTimeout(victory,2000);return;}
+    const door=towerDoors.find(d=>d.floor===TOWER.currentFloor+1);
+    if(door){door.mesh.visible=false;door.open=true;}
+    // Drop loot on floor
+    const lootPos=new THREE.Vector3(TOWER_X+(Math.random()-.5)*4,TOWER.currentFloor*FLOOR_HEIGHT+.5,TOWER_Z+(Math.random()-.5)*4);
+    const drops=['medkit','armor','ammopack','soulshpere'];
+    spawnWorldItem(drops[Math.floor(Math.random()*drops.length)],lootPos);
+    if(Math.random()<.6) spawnWorldItem(['sniper','railgun','chaingun','rocket'][Math.floor(Math.random()*4)],lootPos.clone().add(new THREE.Vector3(2,0,0)));
+    showTowerMsg(`✓ PISO ${TOWER.currentFloor} LIMPIO<br><span style="font-size:13px;color:#ffaa00">SUBE LAS ESCALERAS PARA AVANZAR</span>`,4000);
+    updateTowerHUD();
+  }
+}
+function tryAdvanceFloor(){
+  if(!TOWER.active||!TOWER.floorCleared[TOWER.currentFloor])return;
+  const next=TOWER.currentFloor+1;
+  if(next>NUM_FLOORS+1)return;
+  TOWER.currentFloor=next;spawnFloor(next);
+  showTowerMsg(next>NUM_FLOORS?'☠ PISO DEL BOSS ☠':`⬆ PISO ${next} — INFIERNO PROFUNDO`,3000);
+  updateTowerHUD();
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  PARTICLES
+// ─────────────────────────────────────────────────────────────────
+function spawnBlood(pos){
+  for(let i=0;i<14;i++){
+    const p=new THREE.Mesh(new THREE.SphereGeometry(.05,4,4),new THREE.MeshBasicMaterial({color:0xcc0000,transparent:true}));
+    p.position.copy(pos).add(new THREE.Vector3((Math.random()-.5)*.5,Math.random()*.4,(Math.random()-.5)*.5));
+    p.userData.vel=new THREE.Vector3((Math.random()-.5)*4,Math.random()*5+1,(Math.random()-.5)*4);
+    p.userData.life=1;scene.add(p);G.particles.push(p);
+  }
+}
+function spawnHitSpark(pos){
+  for(let i=0;i<5;i++){
+    const p=new THREE.Mesh(new THREE.SphereGeometry(.03,3,3),new THREE.MeshBasicMaterial({color:0xffaa00,transparent:true}));
+    p.position.copy(pos);p.userData.vel=new THREE.Vector3((Math.random()-.5)*3,Math.random()*2,(Math.random()-.5)*3);
+    p.userData.life=.4;scene.add(p);G.particles.push(p);
+  }
+}
+function updateParticles(dt){
+  for(let i=G.particles.length-1;i>=0;i--){
+    const p=G.particles[i];p.userData.vel.y-=14*dt;p.position.addScaledVector(p.userData.vel,dt);
+    p.userData.life-=dt*2;p.material.opacity=Math.max(0,p.userData.life);
+    if(p.userData.life<=0){scene.remove(p);G.particles.splice(i,1);}
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  INPUT
+// ─────────────────────────────────────────────────────────────────
+document.addEventListener('keydown',e=>{
+  if(!G.running)return;G.keys[e.code]=true;
+  switch(e.code){
+    case'KeyR':reload();break;
+    case'KeyE':toggleZoom();break;
+    case'KeyQ':dropSelectedItem();break;
+    case'KeyF':case'Enter':useSelectedItem();break;
+    case'Space':if(G.onGround){G.velY=6.5;G.onGround=false;}e.preventDefault();break;
+    case'KeyC':case'ControlLeft':case'ControlRight':
+      G.crouching=!G.crouching;
+      document.getElementById('status-icons').textContent=G.crouching?'[ AGACHADO ]':'';break;
+    case'ArrowLeft':selectSlot((G.selectedSlot+8)%9);break;
+    case'ArrowRight':selectSlot((G.selectedSlot+1)%9);break;
+    case'Digit1':selectSlot(0);break;case'Digit2':selectSlot(1);break;case'Digit3':selectSlot(2);break;
+    case'Digit4':selectSlot(3);break;case'Digit5':selectSlot(4);break;case'Digit6':selectSlot(5);break;
+    case'Digit7':selectSlot(6);break;case'Digit8':selectSlot(7);break;case'Digit9':selectSlot(8);break;
+  }
+});
+document.addEventListener('keyup',e=>{G.keys[e.code]=false;});
+document.addEventListener('contextmenu',e=>e.preventDefault());
+document.addEventListener('mousemove',e=>{
+  if(!G.pointerLocked||!G.running)return;
+  const wdef=ITEM_DEFS[G.currentWeapon];
+  const s=G.zoomed?wdef.zoomSens:0.0018;
+  G.yaw-=e.movementX*s;G.pitch-=e.movementY*s;
+  G.pitch=Math.max(-1.3,Math.min(1.3,G.pitch));
+});
+document.addEventListener('mousedown',e=>{
+  if(!G.running)return;
+  if(!G.pointerLocked){renderer.domElement.requestPointerLock();return;}
+  if(e.button===0)shoot();
+});
+document.addEventListener('pointerlockchange',()=>{
+  G.pointerLocked=document.pointerLockElement===renderer.domElement;
+  document.getElementById('lock-notice').style.opacity=G.pointerLocked?'0':'1';
+});
+let chaingunInterval=null;
+document.addEventListener('mousedown',e=>{
+  if(!G.running||!G.pointerLocked||e.button!==0)return;
+  if(G.currentWeapon==='chaingun') chaingunInterval=setInterval(()=>{if(G.running&&G.pointerLocked)shoot();},80);
+});
+document.addEventListener('mouseup',()=>{if(chaingunInterval){clearInterval(chaingunInterval);chaingunInterval=null;}});
+
+// ─────────────────────────────────────────────────────────────────
+//  GAME LOOP
+// ─────────────────────────────────────────────────────────────────
+const clock=new THREE.Clock();
+function loop(){
+  requestAnimationFrame(loop);
+  const dt=Math.min(clock.getDelta(),.05);
+  G.fireT+=dt;
+
+  // FOV lerp
+  camera.fov+=(G.fovTarget-camera.fov)*.15;
+  camera.updateProjectionMatrix();
+
+  // Fire light flicker
+  for(const fl of fireLights){fl.t+=dt;fl.light.intensity=fl.bi*(0.8+Math.sin(fl.t*7.3)*.2);}
+  lavaLight.intensity=2+Math.sin(G.fireT*3.1)*.6;
+
+  if(!G.running){renderer.render(scene,camera);return;}
+
+  updateEffects(dt);
+
+  // Update all animation mixers
+  for(const mx of G.mixers) mx.update(dt);
+
+  // ── MOVEMENT ──────────────────────────────────
+  const cMult=G.crouching?.5:1,sMult=G.effects.speed?2:1;
+  const isSn=ITEM_DEFS[G.currentWeapon]?.isSniperClass;
+  const speed=(G.zoomed?(isSn?1.0:1.8):6.5)*cMult*sMult;
+  const sinY=Math.sin(G.yaw),cosY=Math.cos(G.yaw);
+  let mx2=0,mz2=0;
+  if(G.keys['KeyW']){mx2-=sinY;mz2-=cosY;}
+  if(G.keys['KeyS']){mx2+=sinY;mz2+=cosY;}
+  if(G.keys['KeyA']){mx2-=cosY;mz2+=sinY;}
+  if(G.keys['KeyD']){mx2+=cosY;mz2-=sinY;}
+  const len=Math.sqrt(mx2*mx2+mz2*mz2);
+  if(len>0){camera.position.x+=(mx2/len)*speed*dt;camera.position.z+=(mz2/len)*speed*dt;}
+
+  // Update enemy walk anims based on movement
+  for(const e of G.enemies){
+    if(!e.alive||e.dying)continue;
+    const edx=camera.position.x-e.group.position.x;
+    const edz=camera.position.z-e.group.position.z;
+    const dist=Math.sqrt(edx*edx+edz*edz);
+    if(dist>e.attackRange+.5) setEnemyAnim(e,'walk');
+    else setEnemyAnim(e,'idle');
+  }
+
+  // ── TOWER ENTER / FLOOR CHECK ─────────────────
+  const dx0=camera.position.x-TOWER_X,dz0=camera.position.z-TOWER_Z;
+  const distTower=Math.sqrt(dx0*dx0+dz0*dz0);
+  if(!TOWER.active&&distTower<TOWER_OUTER/2-.5&&camera.position.y<FLOOR_HEIGHT*.85) enterTower();
+
+  if(TOWER.active){
+    const stair=stairObjects[TOWER.currentFloor-1];
+    if(stair&&TOWER.floorCleared[TOWER.currentFloor]){
+      const sdx=camera.position.x-stair.x,sdz=camera.position.z-stair.z;
+      if(Math.sqrt(sdx*sdx+sdz*sdz)<stair.radius) tryAdvanceFloor();
+    }
+    // Lock inside while enemies alive
+    if(TOWER.floorEnemies.filter(e=>e.alive).length>0&&distTower>TOWER_OUTER/2-.9){
+      camera.position.x=TOWER_X+(dx0/distTower)*(TOWER_OUTER/2-.95);
+      camera.position.z=TOWER_Z+(dz0/distTower)*(TOWER_OUTER/2-.95);
+    }
+  }
+
+  // ── GRAVITY / FLOOR ──────────────────────────
+  G.velY-=20*dt;camera.position.y+=G.velY*dt;
+  const eyeH=G.crouching?.9:1.7;
+  const groundY=TOWER.active?TOWER.currentFloor*FLOOR_HEIGHT:0;
+  if(camera.position.y<=groundY+eyeH){camera.position.y=groundY+eyeH;G.velY=0;G.onGround=true;}
+  else G.onGround=false;
+  if(!TOWER.active){camera.position.x=Math.max(-100,Math.min(100,camera.position.x));camera.position.z=Math.max(-100,Math.min(100,camera.position.z));}
+
+  camera.rotation.y=G.yaw;camera.rotation.x=G.pitch;
+  if(G.zoomed&&isSn){G.breathT+=dt;G.pitch+=Math.sin(G.breathT*.5)*.00025;G.yaw+=Math.sin(G.breathT*.35)*.00012;}
+
+  // ── ENEMY AI ─────────────────────────────────
+  for(const e of G.enemies){
+    if(!e.alive||e.dying)continue;
+    const edx=camera.position.x-e.group.position.x;
+    const edz=camera.position.z-e.group.position.z;
+    const dist=Math.sqrt(edx*edx+edz*edz);
+    const sameFloor=!e.isTower||(Math.abs(camera.position.y-e.floorIdx*FLOOR_HEIGHT)<FLOOR_HEIGHT*.9);
+    if(sameFloor&&!G.effects.invis&&dist>e.attackRange){
+      const spd=(e.isBoss&&e.hp<e.maxHp*.4)?e.speed*1.5:e.speed;
+      e.group.position.x+=(edx/dist)*spd*dt;
+      e.group.position.z+=(edz/dist)*spd*dt;
+    }
+    e.group.lookAt(camera.position.x,e.group.position.y,camera.position.z);
+    // Keep enemy at floor level
+    const floorY=e.isTower?(e.floorIdx*FLOOR_HEIGHT):0;
+    e.group.position.y=floorY+.05;
+    // Update head hitbox position
+    if(e.headHitbox){
+      const s=e.rig?.torsoMesh?.scale?.y||1;
+      e.headHitbox.position.set(0,.9*(e.dtype?.scale||1),0);
+    }
+    if(sameFloor&&dist<e.attackRange+.8&&!G.effects.invis){
+      e.attackCooldown-=dt;
+      if(e.attackCooldown<=0){
+        takeDamage(e.damage);e.attackCooldown=DEMON_DEFS[e.dtype]?.attackCd||1.8;
+        setEnemyAnim(e,'attack');
+      }
+    }
+    if(e.isBoss&&e.hp<e.maxHp*.5&&e.phase===1){
+      e.phase=2;e.speed*=1.6;e.damage*=1.4;
+      showTowerMsg('⚡ ARCH-VILE ENRAGED ⚡',3000);
+    }
+  }
+
+  updateWorldItems(dt);updateParticles(dt);updateTowerHUD();
+  renderer.render(scene,camera);
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  INIT — loading sequence
+// ─────────────────────────────────────────────────────────────────
+function setLoadingProgress(pct,label){
+  document.getElementById('loading-bar').style.width=pct+'%';
+  document.getElementById('loading-status').textContent=label;
+}
+
+async function init(){
+  setLoadingProgress(10,'CONSTRUYENDO MUNDO...');
+  buildHellWorld();
+  await delay(100);
+  setLoadingProgress(35,'FORJANDO LA TORRE...');
+  buildTower();
+  await delay(100);
+  setLoadingProgress(55,'INVOCANDO DEMONIOS...');
+  for(let i=0;i<10;i++) spawnFieldDemon();
+  await delay(100);
+  setLoadingProgress(70,'ESPARCIENDO BOTÍN...');
+  spawnRandomItems();
+  await delay(100);
+  setLoadingProgress(90,'PREPARANDO HUD...');
+  buildInventoryHUD();updateHealthHUD();hudAmmo();hudStats();updateTowerHUD();
+  document.getElementById('weapon-name').textContent='SUPER ESCOPETA';
+  await delay(200);
+  setLoadingProgress(100,'LISTO');
+  await delay(400);
+  document.getElementById('loading').style.display='none';
+  document.getElementById('intro').style.display='flex';
+}
+
+function delay(ms){return new Promise(r=>setTimeout(r,ms));}
+
+document.getElementById('startBtn').addEventListener('click',()=>{
+  const intro=document.getElementById('intro');
+  intro.style.opacity='0';intro.style.transition='opacity 0.5s';
+  setTimeout(()=>intro.style.display='none',500);
+  G.running=true;renderer.domElement.requestPointerLock();
+});
+document.getElementById('respawnBtn').addEventListener('click',respawn);
+document.getElementById('playAgainBtn').addEventListener('click',respawn);
+
+loop();
+init();
+</script>
+</body>
+</html>
