@@ -1357,72 +1357,58 @@ function shoot(){
   const recoil=wdef.isSniperClass?(G.zoomed?.002:.02):G.currentWeapon==='supershotgun'?.018:.01;
   G.pitch-=recoil;
 
-  // ── Detección de impacto por distancia + cono de visión ──────
-  // Funciona perfectamente con SkinnedMesh animados (raycasting falla con ellos)
-  const camDir = new THREE.Vector3(
-    -Math.sin(G.yaw)*Math.cos(G.pitch),
-    Math.sin(G.pitch),
-    -Math.cos(G.yaw)*Math.cos(G.pitch)
-  ).normalize();
+  // Dirección exacta de la cámara vía Three.js
+  const camDir=new THREE.Vector3();
+  camera.getWorldDirection(camDir);
 
-  const pellets = G.currentWeapon==='supershotgun' ? 12 : 1;
-  // Radio del hitbox según arma: escopeta más amplia, sniper muy estrecha
-  const hitRadius = wdef.isSniperClass ? (G.zoomed?0.12:0.35)
-                  : G.currentWeapon==='supershotgun' ? 0.9
-                  : G.currentWeapon==='chaingun'     ? 0.55
-                  : 0.65;
-  const maxRange = wdef.isSniperClass ? 300 : 80;
+  const pellets=G.currentWeapon==='supershotgun'?12:1;
+  const maxRange=wdef.isSniperClass?300:120;
 
-  let totalHits = 0;
-  const hitEnemies = new Set();
+  // Hitbox angular en radianes (generoso para que sea jugable)
+  // Escopeta: ±20°, resto: ±6°, sniper zoom: ±1.5°
+  const halfAngle=G.currentWeapon==='supershotgun'?0.35
+    :wdef.isSniperClass&&G.zoomed?0.026
+    :0.10;
+  const cosMin=Math.cos(halfAngle);
 
-  for(let p=0; p<pellets; p++){
-    let bestDist=maxRange, bestEnemy=null, bestHS=false;
-    for(const e of G.enemies){
-      if(!e.alive) continue;
-      const ep = e.group.position;
-      const toEnemy = new THREE.Vector3(ep.x - camera.position.x, 0, ep.z - camera.position.z);
-      const dist = toEnemy.length();
-      if(dist > maxRange) continue;
-
-      // Ángulo horizontal entre dirección de mira y enemigo
-      const toEnemyNorm = toEnemy.clone().normalize();
-      const camDirFlat = new THREE.Vector3(camDir.x, 0, camDir.z).normalize();
-      const dot = camDirFlat.dot(toEnemyNorm);
-      if(dot < 0.1) continue; // enemigo detrás
-
-      // Radio del cuerpo en pantalla aproximado según distancia
-      const enemyRadius = hitRadius * (1 + 4/Math.max(dist,1));
-      const perpDist = Math.sqrt(Math.max(0, 1 - dot*dot)) * dist;
-
-      if(perpDist < enemyRadius && dist < bestDist){
-        // Headshot: apuntando al tercio superior del enemigo
-        const eyeToEnemy = new THREE.Vector3(ep.x - camera.position.x, ep.y+1.2 - camera.position.y, ep.z - camera.position.z).normalize();
-        const headDot = eyeToEnemy.dot(camDir);
-        bestHS = headDot > 0.97 && G.pitch < -0.05;
-        bestDist = dist;
-        bestEnemy = e;
-      }
+  const hitEnemies=new Set();
+  for(let p=0;p<pellets;p++){
+    // Dispersión aleatoria por pellet (solo escopeta)
+    let dir=camDir.clone();
+    if(G.currentWeapon==='supershotgun'&&p>0){
+      dir.x+=(Math.random()-.5)*0.35;
+      dir.z+=(Math.random()-.5)*0.35;
+      dir.normalize();
     }
 
-    if(bestEnemy && !hitEnemies.has(bestEnemy)){
+    let bestDot=-1,bestEnemy=null;
+    for(const e of G.enemies){
+      if(!e.alive)continue;
+      const ep=e.group.position;
+      // Apuntar al centro del cuerpo (~0.9m de altura)
+      const toE=new THREE.Vector3(ep.x-camera.position.x,(ep.y+0.9)-camera.position.y,ep.z-camera.position.z);
+      const dist=toE.length();
+      if(dist<0.2||dist>maxRange)continue;
+      const dot=dir.dot(toE.clone().divideScalar(dist));
+      if(dot>=cosMin&&dot>bestDot){bestDot=dot;bestEnemy=e;}
+    }
+
+    if(bestEnemy&&!hitEnemies.has(bestEnemy)){
       hitEnemies.add(bestEnemy);
-      totalHits++;
       G.hits++;
-      const dmgMult = G.effects.speed?3:1;
-      let dmg = (bestHS ? wdef.damage*3 : wdef.damage) * dmgMult;
-      if(wdef.isSniperClass && G.zoomed) dmg = wdef.damage*5;
-      bestEnemy.hp -= dmg;
-      spawnHitSpark(bestEnemy.group.position.clone().add(new THREE.Vector3(0,0.9,0)));
-      if(bestEnemy.hp <= 0) killEnemy(bestEnemy, bestHS||(wdef.isSniperClass&&G.zoomed));
-      else showMsg(bestHS?'⚡ HEADSHOT!':'· HIT ·', bestHS?'#ffff00':'#ff4400', 200);
-      if(bestEnemy.alive && bestEnemy.isBoss) updateBossHUD(Math.max(0,bestEnemy.hp/bestEnemy.maxHp),bestEnemy.hp,bestEnemy.maxHp);
+      const dmgMult=G.effects.speed?3:1;
+      let dmg=(bestDot>0.998?wdef.damage*3:wdef.damage)*dmgMult; // headshot si mira muy centrada
+      if(wdef.isSniperClass&&G.zoomed)dmg=wdef.damage*5;
+      bestEnemy.hp-=dmg;
+      const hitPos=bestEnemy.group.position.clone().add(new THREE.Vector3(0,0.9,0));
+      spawnHitSpark(hitPos);
+      if(bestEnemy.hp<=0)killEnemy(bestEnemy,bestDot>0.998||(wdef.isSniperClass&&G.zoomed));
+      else showMsg(bestDot>0.998?'⚡ HEADSHOT!':'· HIT ·',bestDot>0.998?'#ffff00':'#ff4400',200);
+      if(bestEnemy.alive&&bestEnemy.isBoss)updateBossHUD(Math.max(0,bestEnemy.hp/bestEnemy.maxHp),bestEnemy.hp,bestEnemy.maxHp);
     }
   }
-
-  if(totalHits===0) showMsg('','#ff4400',0);
   hudStats();
-  if(G.ammo===0) setTimeout(reload,200);
+  if(G.ammo===0)setTimeout(reload,200);
 }
 
 function killEnemy(e,hs){
@@ -1771,6 +1757,20 @@ function loop(){
   }
 
   updateWorldItems(dt);updateParticles(dt);updateTowerHUD();
+
+  // ── DEBUG: muestra distancia y ángulo al enemigo más cercano ──
+  if(G.enemies.length>0){
+    const camDir2=new THREE.Vector3();camera.getWorldDirection(camDir2);
+    let nearDist=9999,nearDot=0;
+    for(const e of G.enemies){if(!e.alive)continue;
+      const toE=new THREE.Vector3(e.group.position.x-camera.position.x,(e.group.position.y+0.9)-camera.position.y,e.group.position.z-camera.position.z);
+      const d=toE.length();const dot=camDir2.dot(toE.clone().divideScalar(d));
+      if(d<nearDist){nearDist=d;nearDot=dot;}
+    }
+    document.getElementById('zoom-label').textContent=
+      `DIST:${nearDist.toFixed(1)} DOT:${nearDot.toFixed(3)} EN:${G.enemies.filter(e=>e.alive).length}`;
+  }
+
   renderer.render(scene,camera);
 }
 
